@@ -34,3 +34,21 @@ class TestHealthEndpoint:
         data = client.get("/health").json()
         assert "uptime_s" in data
         assert isinstance(data["uptime_s"], (int, float))
+
+
+class TestAllRoutersRegistered:
+    def test_settings_route_exists(self, client):
+        resp = client.get("/api/settings")
+        assert resp.status_code != 404
+
+    def test_folders_route_exists(self, client):
+        resp = client.get("/api/folders")
+        assert resp.status_code != 404
+
+    def test_photos_route_exists(self, client):
+        resp = client.get("/api/photos")
+        assert resp.status_code != 404
+
+    def test_queue_route_exists(self, client):
+        resp = client.get("/api/queue/status")
+        assert resp.status_code != 404

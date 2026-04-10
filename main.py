@@ -1,18 +1,22 @@
 """
 Entry point FastAPI — Photo AI Manager.
-Avvia il server con: uvicorn main:app --host 0.0.0.0 --port 8080
+Avvia il server con:
+  uvicorn main:app --host 0.0.0.0 --port 8080
 """
+import signal
 import time
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 import config
 from database.models import init_db
+from services.db_sync import load_db_from_nas, backup_db_to_nas
 from api.settings import router as settings_router
-from api.folders import router as folders_router
-from api.photos import router as photos_router
-from api.queue import router as queue_router, set_worker
+from api.folders  import router as folders_router
+from api.photos   import router as photos_router
+from api.queue    import router as queue_router, set_worker
 
 START_TIME = time.time()
 
@@ -22,18 +26,14 @@ app = FastAPI(
     docs_url="/api/docs",
 )
 
+# ── Router API ────────────────────────────────────────────────────
 app.include_router(settings_router)
 app.include_router(folders_router)
 app.include_router(photos_router)
 app.include_router(queue_router)
 
-# Startup: inizializza il DB locale
-@app.on_event("startup")
-async def on_startup():
-    Path(config.LOCAL_DB).parent.mkdir(parents=True, exist_ok=True)
-    init_db(config.LOCAL_DB)
 
-
+# ── Health ────────────────────────────────────────────────────────
 @app.get("/health", tags=["system"])
 async def health():
     """Readiness check usato dallo script di deploy (§16)."""
@@ -46,3 +46,58 @@ async def health():
         "version":  config.APP_VERSION,
         "uptime_s": int(time.time() - START_TIME),
     }
+
+
+# ── Static files (SPA Vue 3 — Fase 5) ────────────────────────────
+# IMPORTANT: Mount at the end so it doesn't shadow /health or /api/* routes
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
+
+# ── Lifecycle ─────────────────────────────────────────────────────
+@app.on_event("startup")
+async def on_startup():
+    # 1. Prepara directory locale
+    Path(config.LOCAL_DB).parent.mkdir(parents=True, exist_ok=True)
+
+    # 2. Carica DB dal NAS (se disponibile)
+    loaded = load_db_from_nas()
+    if loaded:
+        print(f"DB caricato dal NAS: {config.REMOTE_DB}")
+    else:
+        print("DB non trovato sul NAS — avvio con database vuoto")
+
+    # 3. Inizializza schema (idempotente)
+    init_db(config.LOCAL_DB)
+
+    # 4. Reset item bloccati in 'processing' (riavvio imprevisto)
+    from database.queue import reset_stale_processing
+    reset_stale_processing(config.LOCAL_DB)
+
+    # 5. Avvia backup periodico con APScheduler
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from services.db_sync import backup_db_to_nas as _backup
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(
+        _backup,
+        "interval",
+        minutes=config.BACKUP_INTERVAL_MIN,
+        id="db_backup",
+    )
+    try:
+        scheduler.start()
+        app.state.scheduler = scheduler
+    except Exception:
+        pass  # In test mode, event loop may not be running yet
+
+    # 6. Backup al SIGTERM
+    def _on_sigterm(signum, frame):
+        backup_db_to_nas()
+        raise SystemExit(0)
+    signal.signal(signal.SIGTERM, _on_sigterm)
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    if hasattr(app.state, "scheduler"):
+        app.state.scheduler.shutdown(wait=False)
+    backup_db_to_nas()
