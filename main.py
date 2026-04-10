@@ -3,16 +3,19 @@ Entry point FastAPI — Photo AI Manager.
 Avvia il server con:
   uvicorn main:app --host 0.0.0.0 --port 8080
 """
+import logging
 import signal
 import time
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 import config
 from database.models import init_db
-from services.db_sync import load_db_from_nas, backup_db_to_nas
+from services.db_sync import load_db_from_nas, backup_db_to_nas, prune_old_backups
 from api.settings import router as settings_router
 from api.folders  import router as folders_router
 from api.photos   import router as photos_router
@@ -76,9 +79,16 @@ async def on_startup():
     # 5. Avvia backup periodico con APScheduler
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     from services.db_sync import backup_db_to_nas as _backup
+    import os
+    backup_dir = os.path.join(os.path.dirname(config.REMOTE_DB), "photo_ai.db.backup")
+
+    def _backup_and_prune():
+        backup_db_to_nas()
+        prune_old_backups(backup_dir, keep=config.BACKUP_RETENTION)
+
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
-        _backup,
+        _backup_and_prune,
         "interval",
         minutes=config.BACKUP_INTERVAL_MIN,
         id="db_backup",
@@ -86,8 +96,8 @@ async def on_startup():
     try:
         scheduler.start()
         app.state.scheduler = scheduler
-    except Exception:
-        pass  # In test mode, event loop may not be running yet
+    except Exception as exc:
+        logger.warning("APScheduler non avviato: %s", exc)
 
     # 6. Backup al SIGTERM
     def _on_sigterm(signum, frame):
