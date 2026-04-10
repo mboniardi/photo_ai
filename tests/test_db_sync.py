@@ -104,7 +104,6 @@ class TestPruneOldBackups:
             with open(path, "w") as f:
                 f.write("x")
             names.append(name)
-            time.sleep(0.01)  # mtime diverso
         prune_old_backups(backup_dir, keep=3)
         remaining = sorted(os.listdir(backup_dir))
         # Devono restare i 3 più recenti (nomi più grandi alfabeticamente)

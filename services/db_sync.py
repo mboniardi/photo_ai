@@ -24,7 +24,8 @@ def load_db_from_nas(
     if not os.path.exists(remote):
         return False
 
-    os.makedirs(os.path.dirname(local), exist_ok=True)
+    if dirname := os.path.dirname(local):
+        os.makedirs(dirname, exist_ok=True)
     shutil.copy2(remote, local)
     return True
 
@@ -47,7 +48,8 @@ def backup_db_to_nas(
     if not os.path.exists(local):
         return
 
-    os.makedirs(os.path.dirname(remote), exist_ok=True)
+    if dirname := os.path.dirname(remote):
+        os.makedirs(dirname, exist_ok=True)
     os.makedirs(bdir, exist_ok=True)
 
     # Scrittura atomica tramite file tmp + rename (POSIX)
@@ -69,7 +71,7 @@ def prune_old_backups(backup_dir: str, keep: int = 10) -> None:
     if not os.path.isdir(backup_dir):
         return
     files = sorted(
-        [f for f in os.listdir(backup_dir) if f.endswith(".db")]
+        [f for f in os.listdir(backup_dir) if f.startswith("photo_ai_") and f.endswith(".db")]
     )
     to_delete = files[:-keep] if len(files) > keep else []
     for name in to_delete:
