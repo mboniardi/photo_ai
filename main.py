@@ -9,10 +9,9 @@ from fastapi import FastAPI
 
 import config
 from database.models import init_db
+from api.settings import router as settings_router
 
 START_TIME = time.time()
-
-from api.settings import router as settings_router
 
 app = FastAPI(
     title="Photo AI Manager",

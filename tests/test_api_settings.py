@@ -44,3 +44,7 @@ class TestPutSettings:
     def test_returns_200(self, client):
         resp = client.put("/api/settings", json={"ai_engine": "gemini"})
         assert resp.status_code == 200
+
+    def test_rejects_unknown_key(self, client):
+        resp = client.put("/api/settings", json={"unknown_key": "value"})
+        assert resp.status_code == 422
