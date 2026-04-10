@@ -11,6 +11,7 @@ import config
 from database.models import init_db
 from api.settings import router as settings_router
 from api.folders import router as folders_router
+from api.photos import router as photos_router
 
 START_TIME = time.time()
 
@@ -22,6 +23,7 @@ app = FastAPI(
 
 app.include_router(settings_router)
 app.include_router(folders_router)
+app.include_router(photos_router)
 
 # Startup: inizializza il DB locale
 @app.on_event("startup")
