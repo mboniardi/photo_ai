@@ -22,17 +22,13 @@ def set_worker(worker) -> None:
 
 
 class AddRequest(BaseModel):
-    photo_ids: list
+    photo_ids: list[int]
     priority: int = 5
 
 
 class FolderQueueRequest(BaseModel):
     folder_path: str
     priority: int = 5
-
-
-class DeleteRequest(BaseModel):
-    folder_path: str
 
 
 @router.get("/status")

@@ -36,7 +36,8 @@ class TestQueueStatus:
     def test_has_required_fields(self, client_with_photo):
         c, _ = client_with_photo
         data = c.get("/api/queue/status").json()
-        for field in ["pending", "processing", "done", "error", "is_running"]:
+        for field in ["pending", "processing", "done", "error",
+                      "is_running", "is_paused", "current_photo"]:
             assert field in data, f"Campo mancante: {field}"
 
 
@@ -52,6 +53,12 @@ class TestAddToQueue:
         c.post("/api/queue/add", json={"photo_ids": [pid], "priority": 5})
         data = c.get("/api/queue/status").json()
         assert data["pending"] == 1
+
+    def test_rejects_non_integer_photo_ids(self, client_with_photo):
+        c, _ = client_with_photo
+        resp = c.post("/api/queue/add",
+                      json={"photo_ids": ["not_an_int"], "priority": 5})
+        assert resp.status_code == 422
 
     def test_add_folder(self, client_with_photo, tmp_path, monkeypatch):
         c, pid = client_with_photo

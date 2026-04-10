@@ -8,6 +8,7 @@ from database.folders import (
     get_all_folders, insert_folder, get_folder_by_path,
     update_folder, update_folder_counts, delete_folder,
 )
+from database.photos import count_photos
 from services.scanner import scan_folder
 import config
 
@@ -58,8 +59,6 @@ def scan_and_add_folder(req: ScanRequest):
             auto_analyze=req.auto_analyze,
         )
     result = scan_folder(req.folder_path, db_path=config.LOCAL_DB)
-    # Aggiorna contatori
-    from database.photos import count_photos
     total    = count_photos(config.LOCAL_DB, folder_path=req.folder_path)
     analyzed = count_photos(config.LOCAL_DB, folder_path=req.folder_path,
                             analyzed_only=True)
@@ -74,7 +73,6 @@ def rescan_folder(req: FolderDeleteRequest):
         raise HTTPException(status_code=400,
                             detail=f"Path non trovato: {req.folder_path}")
     result = scan_folder(req.folder_path, db_path=config.LOCAL_DB)
-    from database.photos import count_photos
     total    = count_photos(config.LOCAL_DB, folder_path=req.folder_path)
     analyzed = count_photos(config.LOCAL_DB, folder_path=req.folder_path,
                             analyzed_only=True)
@@ -85,7 +83,7 @@ def rescan_folder(req: FolderDeleteRequest):
 
 @router.put("/meta")
 def update_folder_meta(req: FolderUpdateRequest):
-    fields = {k: v for k, v in req.dict().items()
+    fields = {k: v for k, v in req.model_dump().items()
               if k != "folder_path" and v is not None}
     update_folder(config.LOCAL_DB, req.folder_path, **fields)
     return {"ok": True}

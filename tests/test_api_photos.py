@@ -81,6 +81,13 @@ class TestUpdatePhoto:
         data = c.get(f"/api/photos/{pid}").json()
         assert data["user_description"] == "La mia foto preferita"
 
+    def test_unfavorite_with_zero(self, client_with_photo):
+        c, pid, _ = client_with_photo
+        c.put(f"/api/photos/{pid}", json={"is_favorite": 1})
+        c.put(f"/api/photos/{pid}", json={"is_favorite": 0})
+        data = c.get(f"/api/photos/{pid}").json()
+        assert data["is_favorite"] == 0
+
 
 class TestThumbnail:
     def test_returns_jpeg_bytes(self, client_with_photo):
@@ -95,6 +102,11 @@ class TestThumbnail:
         resp = c.get(f"/api/photos/{pid}/thumbnail")
         img = Image.open(io.BytesIO(resp.content))
         assert max(img.size) <= 400
+
+    def test_thumbnail_has_cache_control(self, client_with_photo):
+        c, pid, _ = client_with_photo
+        resp = c.get(f"/api/photos/{pid}/thumbnail")
+        assert "cache-control" in resp.headers
 
 
 class TestImageEndpoint:
