@@ -4,7 +4,6 @@ Modelli default: llava (visione), nomic-embed-text (embedding).
 Nessun rate limit: elaborazione continua.
 """
 import base64
-import json
 
 import ollama
 
