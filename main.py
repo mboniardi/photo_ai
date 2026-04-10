@@ -12,11 +12,15 @@ from database.models import init_db
 
 START_TIME = time.time()
 
+from api.settings import router as settings_router
+
 app = FastAPI(
     title="Photo AI Manager",
     version=config.APP_VERSION,
     docs_url="/api/docs",
 )
+
+app.include_router(settings_router)
 
 # Startup: inizializza il DB locale
 @app.on_event("startup")
