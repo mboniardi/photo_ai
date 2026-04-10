@@ -2,9 +2,9 @@
 Implementazione AIEngine per Google Gemini (§6.6).
 Modelli: gemini-1.5-flash (visione), text-embedding-004 (embedding).
 """
+import asyncio
 import json
 import re
-from typing import Optional
 
 import google.generativeai as genai
 
@@ -33,11 +33,10 @@ class GeminiEngine(AIEngine):
         image_bytes: bytes,
         location_hint: str = "",
     ) -> PhotoAnalysis:
-        import asyncio
         prompt = _build_prompt(location_hint)
         image_part = {"mime_type": "image/jpeg", "data": image_bytes}
         # genai è sync — esegui in executor per non bloccare l'event loop
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(
             None,
             lambda: self._model.generate_content([prompt, image_part])
@@ -59,8 +58,7 @@ class GeminiEngine(AIEngine):
         )
 
     async def embed(self, text: str) -> list:
-        import asyncio
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(
             None,
             lambda: genai.embed_content(
