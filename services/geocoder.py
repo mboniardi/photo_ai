@@ -3,8 +3,11 @@ Reverse geocoding tramite Nominatim/OSM (gratuito, §6.4).
 Ritorna una stringa "Città, Paese" o None.
 User-Agent obbligatorio per Nominatim (policy OSM).
 """
+import logging
 from typing import Optional
 import httpx
+
+logger = logging.getLogger(__name__)
 
 _NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse"
 _HEADERS = {"User-Agent": "PhotoAIManager/1.0 (personal-use)"}
@@ -29,7 +32,8 @@ async def reverse_geocode(lat: float, lon: float) -> Optional[str]:
             resp = await client.get(_NOMINATIM_URL, params=params)
             resp.raise_for_status()
             data = resp.json()
-    except Exception:
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("reverse_geocode(%s, %s) failed: %s", lat, lon, exc)
         return None
 
     address = data.get("address", {})
