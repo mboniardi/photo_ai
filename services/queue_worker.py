@@ -7,9 +7,12 @@ Worker asincrono per la coda di analisi AI (§6.5).
 """
 import asyncio
 import json
+import logging
 import time
 from datetime import datetime
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from services.ai.base import AIEngine
 from services.image_processor import prepare_for_ai
@@ -145,6 +148,7 @@ class QueueWorker:
             update_queue_status(self._db_path, qid, "done")
 
         except Exception as e:
+            logger.warning("Errore analisi photo_id=%s qid=%s: %s", photo_id, qid, e)
             increment_attempts(self._db_path, qid)
             current = get_queue_item(self._db_path, qid)
             if current["attempts"] >= MAX_ATTEMPTS:
