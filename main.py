@@ -12,9 +12,11 @@ logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, Depends
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 
 import config
 from auth.session import require_auth
+from auth.google_oauth import router as auth_router
 from database.models import init_db
 from services.db_sync import load_db_from_nas, backup_db_to_nas, prune_old_backups
 from api.settings import router as settings_router
@@ -31,6 +33,11 @@ app = FastAPI(
     version=config.APP_VERSION,
     docs_url="/api/docs",
 )
+
+app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY or "dev-placeholder")
+
+# ── Auth Router (public — no require_auth) ────────────────────────
+app.include_router(auth_router)
 
 # ── Router API ────────────────────────────────────────────────────
 app.include_router(settings_router, dependencies=[Depends(require_auth)])
