@@ -16,7 +16,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 import config
 from auth.session import require_auth
-from auth.google_oauth import router as auth_router
+from auth.google_oauth import router as auth_router, init_oauth
 from database.models import init_db
 from services.db_sync import load_db_from_nas, backup_db_to_nas, prune_old_backups
 from api.settings import router as settings_router
@@ -34,7 +34,7 @@ app = FastAPI(
     docs_url="/api/docs",
 )
 
-app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY or "dev-placeholder")
+app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY)
 
 # ── Auth Router (public — no require_auth) ────────────────────────
 app.include_router(auth_router)
@@ -76,6 +76,9 @@ async def on_startup():
         raise RuntimeError(
             "SECRET_KEY non configurata. Imposta la variabile d'ambiente SECRET_KEY."
         )
+
+    # 0b. Initialize OAuth with current config values
+    init_oauth()
 
     # 1. Prepara directory locale
     Path(config.LOCAL_DB).parent.mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,6 @@
 """Route di autenticazione Google OAuth2."""
 import logging
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from authlib.integrations.starlette_client import OAuth
 
@@ -13,13 +13,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 oauth = OAuth()
-oauth.register(
-    name="google",
-    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-    client_id=config.GOOGLE_CLIENT_ID,
-    client_secret=config.GOOGLE_CLIENT_SECRET,
-    client_kwargs={"scope": "openid email profile"},
-)
+
+
+def init_oauth() -> None:
+    """Initialize OAuth registration with current config values."""
+    oauth.register(
+        name="google",
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_id=config.GOOGLE_CLIENT_ID,
+        client_secret=config.GOOGLE_CLIENT_SECRET,
+        client_kwargs={"scope": "openid email profile"},
+    )
 
 _UNAUTHORIZED_HTML = """<!DOCTYPE html>
 <html lang="it">
@@ -71,7 +75,6 @@ def logout():
 
 @router.get("/me")
 def me(request: Request):
-    from fastapi import HTTPException
     user = get_current_user(request)
     if user is None:
         raise HTTPException(status_code=401, detail="Non autenticato")

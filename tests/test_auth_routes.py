@@ -65,3 +65,59 @@ class TestApiProtection:
     def test_health_is_public(self, client):
         resp = client.get("/health")
         assert resp.status_code == 200
+
+
+class TestAuthCallback:
+    def test_callback_with_authorized_email_sets_cookie_and_redirects(self, client, tmp_path, monkeypatch):
+        from auth.whitelist import load_whitelist
+        # Set up whitelist with mario@gmail.com
+        emails_file = tmp_path / "emails.txt"
+        emails_file.write_text("mario@gmail.com\n")
+
+        # Patch load_whitelist to return our test whitelist
+        monkeypatch.setattr(
+            "auth.google_oauth.load_whitelist",
+            lambda path: load_whitelist(str(emails_file))
+        )
+
+        mock_token = {
+            "userinfo": {
+                "email": "mario@gmail.com",
+                "name": "Mario Rossi",
+                "picture": "https://example.com/pic.jpg",
+            }
+        }
+
+        with patch("auth.google_oauth.oauth") as mock_oauth:
+            mock_oauth.google.authorize_access_token = AsyncMock(return_value=mock_token)
+            resp = client.get("/auth/callback", follow_redirects=False)
+
+        assert resp.status_code in (302, 307)
+        assert resp.headers["location"] == "/"
+        assert "photo_ai_session" in resp.headers.get("set-cookie", "")
+
+    def test_callback_with_unauthorized_email_returns_403(self, client, tmp_path, monkeypatch):
+        from auth.whitelist import load_whitelist
+        # Empty whitelist — nobody authorized
+        emails_file = tmp_path / "emails.txt"
+        emails_file.write_text("")
+
+        # Patch load_whitelist to return our test whitelist
+        monkeypatch.setattr(
+            "auth.google_oauth.load_whitelist",
+            lambda path: load_whitelist(str(emails_file))
+        )
+
+        mock_token = {
+            "userinfo": {
+                "email": "hacker@evil.com",
+                "name": "Hacker",
+                "picture": "",
+            }
+        }
+
+        with patch("auth.google_oauth.oauth") as mock_oauth:
+            mock_oauth.google.authorize_access_token = AsyncMock(return_value=mock_token)
+            resp = client.get("/auth/callback")
+
+        assert resp.status_code == 403
