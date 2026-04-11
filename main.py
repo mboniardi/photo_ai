@@ -64,6 +64,12 @@ app.mount("/", StaticFiles(directory="static", html=True), name="static")
 # ── Lifecycle ─────────────────────────────────────────────────────
 @app.on_event("startup")
 async def on_startup():
+    # 0. Fail fast if SECRET_KEY is not configured
+    if not config.SECRET_KEY:
+        raise RuntimeError(
+            "SECRET_KEY non configurata. Imposta la variabile d'ambiente SECRET_KEY."
+        )
+
     # 1. Prepara directory locale
     Path(config.LOCAL_DB).parent.mkdir(parents=True, exist_ok=True)
 
@@ -81,7 +87,12 @@ async def on_startup():
     from database.queue import reset_stale_processing
     reset_stale_processing(config.LOCAL_DB)
 
-    # 5. Avvia backup periodico con APScheduler
+    # 5. Carica whitelist email autorizzate
+    from auth.whitelist import load_whitelist
+    app.state.whitelist = load_whitelist(config.AUTHORIZED_EMAILS_PATH)
+    print(f"Whitelist caricata: {len(app.state.whitelist)} email autorizzate")
+
+    # 6. Avvia backup periodico con APScheduler
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     from services.db_sync import backup_db_to_nas as _backup
     import os
@@ -104,7 +115,7 @@ async def on_startup():
     except Exception as exc:
         logger.warning("APScheduler non avviato: %s", exc)
 
-    # 6. Backup al SIGTERM
+    # 7. Backup al SIGTERM
     def _on_sigterm(signum, frame):
         backup_db_to_nas()
         raise SystemExit(0)

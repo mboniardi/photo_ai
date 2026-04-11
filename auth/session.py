@@ -3,7 +3,7 @@ import logging
 from typing import Optional
 
 from fastapi import Request
-from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from itsdangerous import URLSafeTimedSerializer, BadSignature
 
 import config
 
@@ -22,7 +22,7 @@ def decode_session_token(token: str, secret_key: str) -> Optional[dict]:
     s = URLSafeTimedSerializer(secret_key)
     try:
         return s.loads(token, max_age=_MAX_AGE_SECONDS)
-    except (BadSignature, SignatureExpired) as exc:
+    except BadSignature as exc:
         logger.debug("Session token invalido: %s", exc)
         return None
 
@@ -39,4 +39,18 @@ def require_auth(request: Request) -> dict:
     user = get_current_user(request)
     if user is None:
         raise HTTPException(status_code=401, detail="Non autenticato")
+    whitelist = getattr(request.app.state, "whitelist", None)
+    if whitelist is not None and user.get("email") not in whitelist:
+        raise HTTPException(status_code=403, detail="Accesso non autorizzato")
     return user
+
+
+def set_session_cookie(response, user_info: dict) -> None:
+    token = create_session_token(user_info, config.SECRET_KEY)
+    response.set_cookie(
+        _COOKIE_NAME,
+        token,
+        max_age=_MAX_AGE_SECONDS,
+        httponly=True,
+        samesite="lax",
+    )
