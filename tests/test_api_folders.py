@@ -9,12 +9,15 @@ from PIL import Image
 def client(tmp_path, monkeypatch):
     db = str(tmp_path / "test.db")
     monkeypatch.setenv("LOCAL_DB", db)
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
     import config, importlib
     importlib.reload(config)
     from database.models import init_db
     init_db(db)
     from main import app
-    return TestClient(app), tmp_path
+    from auth.session import create_session_token
+    token = create_session_token({"email": "test@test.com", "name": "Test", "picture": ""}, "test-secret")
+    return TestClient(app, cookies={"photo_ai_session": token}), tmp_path
 
 
 def make_photo_dir(tmp_path):

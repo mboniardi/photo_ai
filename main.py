@@ -10,10 +10,11 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.staticfiles import StaticFiles
 
 import config
+from auth.session import require_auth
 from database.models import init_db
 from services.db_sync import load_db_from_nas, backup_db_to_nas, prune_old_backups
 from api.settings import router as settings_router
@@ -32,12 +33,12 @@ app = FastAPI(
 )
 
 # ── Router API ────────────────────────────────────────────────────
-app.include_router(settings_router)
-app.include_router(folders_router)
-app.include_router(photos_router)
-app.include_router(queue_router)
-app.include_router(search_router)
-app.include_router(export_router)
+app.include_router(settings_router, dependencies=[Depends(require_auth)])
+app.include_router(folders_router,  dependencies=[Depends(require_auth)])
+app.include_router(photos_router,   dependencies=[Depends(require_auth)])
+app.include_router(queue_router,    dependencies=[Depends(require_auth)])
+app.include_router(search_router,   dependencies=[Depends(require_auth)])
+app.include_router(export_router,   dependencies=[Depends(require_auth)])
 
 
 # ── Health ────────────────────────────────────────────────────────
