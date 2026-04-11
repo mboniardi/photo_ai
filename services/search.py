@@ -47,7 +47,7 @@ def semantic_search(
     threshold: float = SIMILARITY_THRESHOLD,
     folder_path: Optional[str] = None,
     is_favorite: Optional[bool] = None,
-    is_trash: Optional[bool] = False,
+    is_trash: Optional[bool] = None,
     min_score: Optional[float] = None,
     format: Optional[str] = None,
     date_from: Optional[str] = None,

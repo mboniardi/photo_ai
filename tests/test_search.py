@@ -218,10 +218,10 @@ class TestSemanticSearch:
         assert p1 not in ids
         assert p2 in ids
 
-    def test_excludes_trash_by_default(self, db_with_photos):
+    def test_excludes_trash_when_requested(self, db_with_photos):
         from services.search import semantic_search
         db, p1, p2, p3 = db_with_photos
         update_photo(db, p2, is_trash=1)
-        results = semantic_search(db, [0.9, 0.1, 0.0])
+        results = semantic_search(db, [0.9, 0.1, 0.0], is_trash=False)
         ids = [r["id"] for r in results]
         assert p2 not in ids
