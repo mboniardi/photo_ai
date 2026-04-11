@@ -1,1 +1,1606 @@
-<!DOCTYPE html><html><head><title>Photo AI Manager</title></head><body><h1>Photo AI Manager</h1><p>Frontend coming in Phase 5.</p></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Photo AI Manager</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d0d0d;
+      --card:      #1a1a1a;
+      --border:    #2a2a2a;
+      --subtle:    #3a3a3a;
+      --text:      #e8e8e8;
+      --muted:     #888;
+      --amber:     #f59e0b;
+      --amber-dim: #92600a;
+      --green:     #22c55e;
+      --red:       #ef4444;
+      --radius:    8px;
+      --sidebar-w: 240px;
+      --header-h:  56px;
+      --trans:     200ms ease;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      overflow: hidden;
+    }
+
+    #app { display: flex; flex-direction: column; height: 100vh; }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--subtle); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+    /* HEADER */
+    .header {
+      height: var(--header-h);
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 12px;
+      flex-shrink: 0;
+      z-index: 100;
+    }
+    .header-logo {
+      display: flex; align-items: center; gap: 8px;
+      font-weight: 600; font-size: 15px; white-space: nowrap; color: var(--text);
+    }
+    .header-logo-icon { font-size: 20px; }
+    .search-bar { flex: 1; position: relative; max-width: 560px; }
+    .search-bar input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 7px 36px 7px 14px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      outline: none;
+      transition: border-color var(--trans);
+    }
+    .search-bar input:focus { border-color: var(--amber); }
+    .search-bar input::placeholder { color: var(--muted); }
+    .search-clear {
+      position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      font-size: 16px; line-height: 1; padding: 2px;
+    }
+    .search-clear:hover { color: var(--text); }
+    .header-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+    .icon-btn {
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      padding: 6px; border-radius: var(--radius); font-size: 18px; line-height: 1;
+      transition: color var(--trans), background var(--trans);
+    }
+    .icon-btn:hover { color: var(--text); background: var(--border); }
+    .avatar {
+      width: 30px; height: 30px; border-radius: 50%;
+      background: var(--amber); display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 600; color: #000; cursor: default; overflow: hidden;
+    }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+    /* BODY */
+    .body { display: flex; flex: 1; overflow: hidden; }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: var(--sidebar-w); flex-shrink: 0;
+      background: var(--card); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden;
+    }
+    .sidebar-section { padding: 8px 0; }
+    .sidebar-label {
+      padding: 6px 16px; font-size: 10px; font-weight: 600;
+      letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+    }
+    .sidebar-item {
+      display: flex; align-items: center; gap: 8px; padding: 7px 16px;
+      cursor: pointer; border-radius: 0; transition: background var(--trans), color var(--trans);
+      color: var(--muted); font-size: 13px; user-select: none;
+      border-left: 3px solid transparent;
+    }
+    .sidebar-item:hover { background: var(--border); color: var(--text); }
+    .sidebar-item.active { color: var(--amber); border-left-color: var(--amber); background: rgba(245,158,11,0.06); }
+    .sidebar-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sidebar-badge { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--muted); white-space: nowrap; }
+    .sidebar-item.active .sidebar-badge { color: var(--amber-dim); }
+    .sidebar-add-btn {
+      display: flex; align-items: center; gap: 6px;
+      margin: 4px 12px; padding: 6px 10px;
+      background: none; border: 1px dashed var(--subtle); border-radius: var(--radius);
+      color: var(--muted); cursor: pointer; font-size: 12px; font-family: inherit;
+      width: calc(100% - 24px); transition: border-color var(--trans), color var(--trans);
+    }
+    .sidebar-add-btn:hover { border-color: var(--amber); color: var(--amber); }
+    .folder-actions { display: flex; gap: 4px; opacity: 0; transition: opacity var(--trans); }
+    .sidebar-item:hover .folder-actions { opacity: 1; }
+    .folder-action-btn {
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      padding: 2px 4px; border-radius: 4px; font-size: 12px; line-height: 1;
+    }
+    .folder-action-btn:hover { color: var(--text); background: var(--subtle); }
+
+    /* QUEUE PANEL */
+    .queue-panel { border-top: 1px solid var(--border); }
+    .queue-header {
+      display: flex; align-items: center; padding: 8px 16px; cursor: pointer;
+      user-select: none; color: var(--muted); font-size: 12px; font-weight: 500;
+      transition: color var(--trans);
+    }
+    .queue-header:hover { color: var(--text); }
+    .queue-header-title { flex: 1; }
+    .queue-chevron { font-size: 10px; transition: transform var(--trans); }
+    .queue-chevron.open { transform: rotate(180deg); }
+    .queue-body { padding: 8px 16px 12px; }
+    .queue-progress-bar { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; margin-bottom: 8px; }
+    .queue-progress-fill { height: 100%; background: var(--amber); border-radius: 2px; transition: width 0.5s ease; }
+    .queue-stats { display: flex; gap: 12px; font-size: 11px; font-family: 'DM Mono', monospace; margin-bottom: 8px; }
+    .queue-stat-done { color: var(--green); }
+    .queue-stat-pending { color: var(--amber); }
+    .queue-stat-error { color: var(--red); }
+    .queue-current { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 8px; font-family: 'DM Mono', monospace; }
+    .queue-buttons { display: flex; gap: 6px; }
+    .queue-btn {
+      flex: 1; padding: 5px 0; border: 1px solid var(--border); background: none;
+      color: var(--text); border-radius: 5px; cursor: pointer; font-size: 11px; font-family: inherit;
+      transition: border-color var(--trans), background var(--trans);
+    }
+    .queue-btn:hover { border-color: var(--amber); background: rgba(245,158,11,0.08); }
+
+    /* MAIN */
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* TOOLBAR */
+    .toolbar {
+      padding: 10px 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap;
+    }
+    .toolbar-left { display: flex; align-items: center; gap: 6px; flex: 1; flex-wrap: wrap; }
+    .toolbar-right { display: flex; align-items: center; gap: 6px; }
+    .toolbar-btn {
+      display: flex; align-items: center; gap: 5px; padding: 5px 10px;
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+      color: var(--muted); cursor: pointer; font-size: 12px; font-family: inherit;
+      transition: border-color var(--trans), color var(--trans), background var(--trans);
+      white-space: nowrap;
+    }
+    .toolbar-btn:hover { border-color: var(--subtle); color: var(--text); }
+    .toolbar-btn.active { border-color: var(--amber); color: var(--amber); background: rgba(245,158,11,0.06); }
+    .density-group { display: flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .density-btn {
+      padding: 5px 9px; background: var(--card); border: none;
+      border-right: 1px solid var(--border); color: var(--muted); cursor: pointer;
+      font-size: 12px; transition: color var(--trans), background var(--trans);
+    }
+    .density-btn:last-child { border-right: none; }
+    .density-btn:hover { color: var(--text); background: var(--border); }
+    .density-btn.active { color: var(--amber); background: rgba(245,158,11,0.06); }
+    .filter-badge {
+      display: flex; align-items: center; gap: 4px; padding: 3px 8px;
+      background: rgba(245,158,11,0.12); border: 1px solid var(--amber-dim);
+      border-radius: 12px; color: var(--amber); font-size: 11px;
+    }
+    .filter-badge-x { background: none; border: none; color: var(--amber); cursor: pointer; padding: 0; font-size: 13px; line-height: 1; }
+    .filter-badge-x:hover { color: var(--text); }
+    .sort-select {
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 5px 8px; color: var(--muted); font-family: inherit; font-size: 12px;
+      outline: none; cursor: pointer; transition: border-color var(--trans);
+    }
+    .sort-select:focus { border-color: var(--amber); }
+
+    /* FILTERS PANEL */
+    .filters-panel { border-bottom: 1px solid var(--border); background: var(--card); overflow: hidden; }
+    .filters-inner {
+      padding: 12px 16px;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px 16px;
+    }
+    .filter-group { display: flex; flex-direction: column; gap: 4px; }
+    .filter-label { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+    .filter-input {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 5px;
+      padding: 5px 8px; color: var(--text); font-family: inherit; font-size: 12px;
+      outline: none; transition: border-color var(--trans); width: 100%;
+    }
+    .filter-input:focus { border-color: var(--amber); }
+    .filter-select {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 5px;
+      padding: 5px 8px; color: var(--text); font-family: inherit; font-size: 12px;
+      outline: none; transition: border-color var(--trans); width: 100%; cursor: pointer;
+    }
+    .filter-select:focus { border-color: var(--amber); }
+    .filter-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: var(--muted); user-select: none; }
+    .filter-toggle input[type="checkbox"] { accent-color: var(--amber); cursor: pointer; }
+    .filter-checkboxes { display: flex; gap: 8px; flex-wrap: wrap; }
+    .filter-check-item { display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 12px; color: var(--muted); user-select: none; }
+    .filter-check-item input { accent-color: var(--amber); cursor: pointer; }
+    .filter-slider { width: 100%; accent-color: var(--amber); }
+    .filters-footer { padding: 0 16px 10px; display: flex; justify-content: flex-end; }
+    .clear-filters-btn {
+      background: none; border: 1px solid var(--border); border-radius: 5px;
+      padding: 4px 12px; color: var(--muted); cursor: pointer; font-size: 12px; font-family: inherit;
+      transition: border-color var(--trans), color var(--trans);
+    }
+    .clear-filters-btn:hover { border-color: var(--red); color: var(--red); }
+
+    /* BULK TOOLBAR */
+    .bulk-toolbar {
+      padding: 8px 16px; background: rgba(245,158,11,0.06);
+      border-bottom: 1px solid var(--amber-dim);
+      display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+    }
+    .bulk-count { font-size: 13px; color: var(--amber); font-weight: 500; }
+    .bulk-btn {
+      padding: 5px 12px; background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text); cursor: pointer;
+      font-size: 12px; font-family: inherit; transition: border-color var(--trans), color var(--trans);
+    }
+    .bulk-btn:hover { border-color: var(--amber); color: var(--amber); }
+    .bulk-btn.danger:hover { border-color: var(--red); color: var(--red); }
+
+    /* PHOTO GRID */
+    .grid-container { flex: 1; overflow-y: auto; padding: 16px; }
+    .photo-grid { display: grid; gap: 8px; }
+    .photo-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .photo-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+    .photo-grid.cols-6 { grid-template-columns: repeat(6, 1fr); }
+    .photo-card {
+      position: relative; background: var(--card); border-radius: var(--radius);
+      overflow: hidden; cursor: pointer; border: 2px solid transparent;
+      transition: border-color var(--trans), transform var(--trans); aspect-ratio: 1;
+    }
+    .photo-card:hover { transform: scale(1.01); }
+    .photo-card.selected { border-color: var(--amber); }
+    .photo-card.is-trash::after {
+      content: ''; position: absolute; inset: 0;
+      background: rgba(239,68,68,0.25); pointer-events: none;
+    }
+    .photo-thumb { width: 100%; height: 100%; object-fit: cover; display: block; background: var(--border); }
+    .photo-thumb-placeholder {
+      width: 100%; height: 100%; background: var(--border);
+      display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 24px;
+    }
+    .photo-hover-overlay {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.7);
+      opacity: 0; transition: opacity var(--trans);
+      display: flex; align-items: flex-end; padding: 10px;
+    }
+    .photo-card:hover .photo-hover-overlay { opacity: 1; }
+    .photo-hover-desc {
+      font-size: 11px; color: rgba(255,255,255,0.85); line-height: 1.4; font-style: italic;
+      overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    }
+    .photo-badge-score {
+      position: absolute; bottom: 6px; left: 6px; width: 24px; height: 24px;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 600; font-family: 'DM Mono', monospace; z-index: 2;
+    }
+    .score-green { background: var(--green); color: #000; }
+    .score-amber { background: var(--amber); color: #000; }
+    .score-gray  { background: var(--subtle); color: var(--text); }
+    .photo-badge-fav { position: absolute; top: 6px; left: 6px; font-size: 14px; z-index: 2; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8)); }
+    .photo-badge-format {
+      position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.75);
+      border-radius: 3px; padding: 2px 5px; font-size: 9px; font-family: 'DM Mono', monospace;
+      color: var(--text); z-index: 2;
+    }
+    .photo-badge-unanalyzed {
+      position: absolute; bottom: 6px; right: 6px; background: rgba(0,0,0,0.6);
+      border-radius: 3px; padding: 2px 5px; font-size: 9px; color: var(--muted); z-index: 2;
+    }
+    .photo-select-check {
+      position: absolute; top: 6px; left: 6px; width: 20px; height: 20px;
+      border-radius: 50%; background: rgba(0,0,0,0.6); border: 2px solid var(--subtle);
+      z-index: 3; display: flex; align-items: center; justify-content: center;
+      transition: border-color var(--trans), background var(--trans);
+    }
+    .photo-card.selected .photo-select-check { border-color: var(--amber); background: var(--amber); }
+    .photo-select-checkmark { display: none; font-size: 10px; color: #000; font-weight: 700; line-height: 1; }
+    .photo-card.selected .photo-select-checkmark { display: block; }
+
+    /* LOAD MORE */
+    .load-more-container { padding: 24px; text-align: center; }
+    .load-more-btn {
+      padding: 10px 32px; background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--muted); cursor: pointer;
+      font-size: 13px; font-family: inherit; transition: border-color var(--trans), color var(--trans);
+    }
+    .load-more-btn:hover { border-color: var(--amber); color: var(--amber); }
+    .empty-state { padding: 64px 16px; text-align: center; color: var(--muted); }
+    .empty-state-icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-state-text { font-size: 15px; }
+    .empty-state-sub { font-size: 12px; margin-top: 6px; }
+
+    /* LIGHTBOX */
+    .lightbox-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.92);
+      z-index: 200; display: flex; align-items: center; justify-content: center;
+    }
+    .lightbox-close {
+      position: absolute; top: 16px; right: 16px;
+      background: rgba(255,255,255,0.08); border: none; color: var(--text);
+      cursor: pointer; font-size: 20px; padding: 8px 10px; border-radius: var(--radius);
+      line-height: 1; z-index: 10; transition: background var(--trans);
+    }
+    .lightbox-close:hover { background: rgba(255,255,255,0.15); }
+    .lightbox-nav {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      background: rgba(255,255,255,0.08); border: none; color: var(--text);
+      cursor: pointer; font-size: 22px; padding: 12px 8px; border-radius: var(--radius);
+      line-height: 1; z-index: 10; transition: background var(--trans);
+    }
+    .lightbox-nav:hover { background: rgba(255,255,255,0.15); }
+    .lightbox-nav.prev { left: 12px; }
+    .lightbox-nav.next { right: 292px; }
+    .lightbox-inner { display: flex; height: 100vh; width: 100%; }
+    .lightbox-image-area {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      padding: 48px 60px; position: relative;
+    }
+    .lightbox-img {
+      max-width: 100%; max-height: 100%; object-fit: contain;
+      border-radius: 4px; box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+    }
+    .lightbox-panel {
+      width: 280px; flex-shrink: 0; background: var(--card);
+      border-left: 1px solid var(--border); overflow-y: auto;
+      padding: 16px; display: flex; flex-direction: column; gap: 14px;
+    }
+    .lb-section-title { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+    .lb-score-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+    .lb-score-label { color: var(--muted); }
+    .lb-score-value { font-family: 'DM Mono', monospace; font-weight: 500; }
+    .lb-overall-score { display: flex; align-items: baseline; gap: 4px; font-family: 'DM Mono', monospace; }
+    .lb-overall-big { font-size: 28px; font-weight: 500; }
+    .lb-overall-max { font-size: 14px; color: var(--muted); }
+    .lb-quality-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-top: 4px; }
+    .quality-excellent { background: rgba(34,197,94,0.15); color: var(--green); }
+    .quality-good      { background: rgba(245,158,11,0.15); color: var(--amber); }
+    .quality-average   { background: rgba(100,100,100,0.2); color: var(--muted); }
+    .quality-poor      { background: rgba(239,68,68,0.1); color: #f87171; }
+    .lb-description-textarea {
+      width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 5px;
+      padding: 7px; color: var(--text); font-family: inherit; font-size: 12px;
+      line-height: 1.5; resize: vertical; min-height: 70px; outline: none;
+      transition: border-color var(--trans);
+    }
+    .lb-description-textarea:focus { border-color: var(--amber); }
+    .lb-save-desc-btn {
+      margin-top: 4px; padding: 4px 12px; background: var(--amber); border: none;
+      border-radius: 5px; color: #000; font-size: 11px; font-weight: 600;
+      cursor: pointer; font-family: inherit; transition: opacity var(--trans);
+    }
+    .lb-save-desc-btn:hover { opacity: 0.85; }
+    .tags-list { display: flex; flex-wrap: wrap; gap: 4px; }
+    .tag { padding: 2px 8px; background: var(--border); border-radius: 10px; font-size: 11px; color: var(--text); }
+    .color-dots { display: flex; gap: 6px; flex-wrap: wrap; }
+    .color-dot { width: 20px; height: 20px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.15); }
+    .lb-list { list-style: none; display: flex; flex-direction: column; gap: 3px; }
+    .lb-list li { font-size: 12px; color: var(--text); }
+    .lb-list.strengths li::before { content: '+ '; color: var(--green); }
+    .lb-list.weaknesses li::before { content: '− '; color: var(--red); }
+    .exif-table { width: 100%; border-collapse: collapse; font-size: 11px; font-family: 'DM Mono', monospace; }
+    .exif-table td { padding: 3px 0; vertical-align: top; }
+    .exif-table td:first-child { color: var(--muted); padding-right: 8px; white-space: nowrap; }
+    .lb-actions { display: flex; flex-direction: column; gap: 6px; }
+    .lb-action-btn {
+      display: flex; align-items: center; gap: 6px; padding: 7px 12px;
+      background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+      color: var(--text); cursor: pointer; font-size: 12px; font-family: inherit;
+      transition: border-color var(--trans), color var(--trans);
+    }
+    .lb-action-btn:hover { border-color: var(--amber); color: var(--amber); }
+    .lb-action-btn.active { border-color: var(--amber); color: var(--amber); }
+    .lb-action-btn.danger:hover { border-color: var(--red); color: var(--red); }
+    .lb-action-btn.danger.active { border-color: var(--red); color: var(--red); }
+
+    /* MODALS */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+      z-index: 300; display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      padding: 24px; width: 100%; max-width: 460px; max-height: 90vh; overflow-y: auto;
+    }
+    .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 20px; }
+    .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+    .form-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+    .form-input {
+      background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 8px 10px; color: var(--text); font-family: inherit; font-size: 13px;
+      outline: none; transition: border-color var(--trans);
+    }
+    .form-input:focus { border-color: var(--amber); }
+    .form-select {
+      background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 8px 10px; color: var(--text); font-family: inherit; font-size: 13px;
+      outline: none; transition: border-color var(--trans); cursor: pointer; width: 100%;
+    }
+    .form-select:focus { border-color: var(--amber); }
+    .form-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; user-select: none; }
+    .form-toggle input { accent-color: var(--amber); cursor: pointer; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+    .btn-primary {
+      padding: 8px 20px; background: var(--amber); border: none; border-radius: var(--radius);
+      color: #000; font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit;
+      transition: opacity var(--trans);
+    }
+    .btn-primary:hover { opacity: 0.85; }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-secondary {
+      padding: 8px 20px; background: none; border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--muted); font-size: 13px;
+      cursor: pointer; font-family: inherit; transition: border-color var(--trans), color var(--trans);
+    }
+    .btn-secondary:hover { border-color: var(--subtle); color: var(--text); }
+    .test-result { margin-top: 8px; padding: 6px 10px; border-radius: 5px; font-size: 12px; }
+    .test-result.ok  { background: rgba(34,197,94,0.1); color: var(--green); }
+    .test-result.err { background: rgba(239,68,68,0.1); color: var(--red); }
+    .divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+    /* SPINNER */
+    .spinner {
+      width: 20px; height: 20px; border: 2px solid var(--border);
+      border-top-color: var(--amber); border-radius: 50%;
+      animation: spin 0.7s linear infinite; margin: 0 auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* TRANSITIONS */
+    .fade-enter-active, .fade-leave-active { transition: opacity 0.15s ease; }
+    .fade-enter-from, .fade-leave-to { opacity: 0; }
+    .slide-enter-active, .slide-leave-active { transition: max-height 0.2s ease, opacity 0.2s ease; overflow: hidden; }
+    .slide-enter-from, .slide-leave-to { max-height: 0; opacity: 0; }
+    .slide-enter-to, .slide-leave-from { max-height: 600px; opacity: 1; }
+
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .photo-grid.cols-6 { grid-template-columns: repeat(3, 1fr); }
+      .lightbox-nav.next { right: 12px; }
+      .lightbox-panel { width: 220px; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-logo">
+      <span class="header-logo-icon">📷</span>
+      <span>Photo AI</span>
+    </div>
+
+    <div class="search-bar">
+      <input
+        type="text"
+        v-model="searchQuery"
+        placeholder="Search photos… (press Enter)"
+        @keyup.enter="doSearch"
+        @keyup.escape="clearSearch"
+      />
+      <button v-if="searchQuery || isSearchMode" class="search-clear" @click="clearSearch" title="Clear">✕</button>
+    </div>
+
+    <div class="header-actions">
+      <button class="icon-btn" @click="openSettings" title="Settings">⚙️</button>
+      <div class="avatar" :title="user ? (user.name || user.email) : 'User'">
+        <img v-if="user && user.picture" :src="user.picture" :alt="user.name" />
+        <span v-else>{{ userInitial }}</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- BODY -->
+  <div class="body">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Library</div>
+        <div
+          class="sidebar-item"
+          :class="{ active: selectedFolder === null && !isSearchMode }"
+          @click="selectFolder(null)"
+        >
+          <span>🖼</span>
+          <span class="sidebar-item-name">All photos</span>
+          <span class="sidebar-badge">{{ totalPhotos }}</span>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-label">Folders</div>
+        <div
+          v-for="folder in folders"
+          :key="folder.folder_path"
+          class="sidebar-item"
+          :class="{ active: selectedFolder === folder.folder_path && !isSearchMode }"
+          @click="selectFolder(folder.folder_path)"
+        >
+          <span>📁</span>
+          <span class="sidebar-item-name">{{ folderName(folder) }}</span>
+          <div class="folder-actions" @click.stop>
+            <button class="folder-action-btn" @click="rescanFolder(folder)" title="Rescan">↺</button>
+            <button class="folder-action-btn" @click="deleteFolder(folder)" title="Delete">✕</button>
+          </div>
+          <span class="sidebar-badge">{{ folder.photo_count || 0 }}</span>
+        </div>
+
+        <button class="sidebar-add-btn" @click="openAddFolder">
+          <span>+</span>
+          <span>Add folder</span>
+        </button>
+      </div>
+
+      <!-- QUEUE PANEL -->
+      <div class="queue-panel">
+        <div class="queue-header" @click="queueOpen = !queueOpen">
+          <span class="queue-header-title">
+            ⚡ Queue
+            <span v-if="queue.is_running && !queue.is_paused" style="color:var(--amber)"> ● running</span>
+            <span v-else-if="queue.is_paused" style="color:var(--muted)"> ⏸ paused</span>
+          </span>
+          <span class="queue-chevron" :class="{ open: queueOpen }">▼</span>
+        </div>
+        <transition name="slide">
+          <div v-show="queueOpen" class="queue-body">
+            <div class="queue-progress-bar">
+              <div class="queue-progress-fill" :style="{ width: queueProgress + '%' }"></div>
+            </div>
+            <div class="queue-stats">
+              <span class="queue-stat-done">✓ {{ queue.done || 0 }}</span>
+              <span class="queue-stat-pending">⏳ {{ queue.pending || 0 }}</span>
+              <span v-if="(queue.error || 0) > 0" class="queue-stat-error">✗ {{ queue.error }}</span>
+            </div>
+            <div v-if="queue.current_photo" class="queue-current">▶ {{ queue.current_photo }}</div>
+            <div class="queue-buttons">
+              <button v-if="queue.is_running && !queue.is_paused" class="queue-btn" @click="pauseQueue">Pause</button>
+              <button v-if="queue.is_paused" class="queue-btn" @click="resumeQueue">Resume</button>
+            </div>
+          </div>
+        </transition>
+      </div>
+    </aside>
+
+    <!-- MAIN -->
+    <main class="main">
+
+      <!-- TOOLBAR -->
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <select class="sort-select" v-model="sortBy" @change="loadPhotos(true)">
+            <option value="overall_score">Sort: Score</option>
+            <option value="taken_at">Sort: Date</option>
+            <option value="filename">Sort: Name</option>
+            <option value="file_size">Sort: Size</option>
+          </select>
+
+          <button class="toolbar-btn" @click="toggleSortDir">
+            {{ sortDesc ? '↓ Desc' : '↑ Asc' }}
+          </button>
+
+          <button class="toolbar-btn" :class="{ active: showFilters }" @click="showFilters = !showFilters">
+            ⚙ Filters{{ activeFilterCount > 0 ? ` (${activeFilterCount})` : '' }}
+          </button>
+
+          <div v-for="badge in filterBadges" :key="badge.key" class="filter-badge">
+            {{ badge.label }}
+            <button class="filter-badge-x" @click="clearFilter(badge.key)">✕</button>
+          </div>
+
+          <button v-if="activeFilterCount > 0" class="toolbar-btn" style="color:var(--red)" @click="clearAllFilters">
+            Clear all
+          </button>
+        </div>
+
+        <div class="toolbar-right">
+          <div class="density-group">
+            <button class="density-btn" :class="{ active: density === 3 }" @click="density = 3" title="3 cols">⊟</button>
+            <button class="density-btn" :class="{ active: density === 4 }" @click="density = 4" title="4 cols">⊞</button>
+            <button class="density-btn" :class="{ active: density === 6 }" @click="density = 6" title="6 cols">⊡</button>
+          </div>
+          <button class="toolbar-btn" :class="{ active: selectMode }" @click="toggleSelectMode">
+            {{ selectMode ? '✓ Selecting' : 'Select' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- FILTERS PANEL -->
+      <transition name="slide">
+        <div v-show="showFilters" class="filters-panel">
+          <div class="filters-inner">
+            <div class="filter-group">
+              <label class="filter-label">Folder</label>
+              <select class="filter-select" v-model="filters.folder_path" @change="loadPhotos(true)">
+                <option value="">All folders</option>
+                <option v-for="f in folders" :key="f.folder_path" :value="f.folder_path">
+                  {{ folderName(f) }}
+                </option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">Date from</label>
+              <input type="date" class="filter-input" v-model="filters.date_from" @change="loadPhotos(true)" />
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">Date to</label>
+              <input type="date" class="filter-input" v-model="filters.date_to" @change="loadPhotos(true)" />
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">Location</label>
+              <input type="text" class="filter-input" v-model="filters.location" placeholder="City, country…" @change="loadPhotos(true)" />
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">Min score: {{ filters.min_score }}</label>
+              <input type="range" min="1" max="10" step="0.5" class="filter-slider" v-model.number="filters.min_score" @change="loadPhotos(true)" />
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">Analysis</label>
+              <select class="filter-select" v-model="filters.analyzed" @change="loadPhotos(true)">
+                <option value="">All</option>
+                <option value="true">Analyzed</option>
+                <option value="false">Not analyzed</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">Orientation</label>
+              <select class="filter-select" v-model="filters.orientation" @change="loadPhotos(true)">
+                <option value="">All</option>
+                <option value="horizontal">Horizontal</option>
+                <option value="vertical">Vertical</option>
+                <option value="square">Square</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">Format</label>
+              <div class="filter-checkboxes">
+                <label v-for="fmt in ['jpg','heic','raw','png']" :key="fmt" class="filter-check-item">
+                  <input type="checkbox" :value="fmt" v-model="filters.formats" @change="loadPhotos(true)" />
+                  {{ fmt.toUpperCase() }}
+                </label>
+              </div>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">Show</label>
+              <label class="filter-toggle">
+                <input type="checkbox" v-model="filters.only_favorites" @change="loadPhotos(true)" />
+                Only favorites
+              </label>
+              <label class="filter-toggle" style="margin-top:4px">
+                <input type="checkbox" v-model="filters.only_trash" @change="loadPhotos(true)" />
+                Include trash
+              </label>
+            </div>
+          </div>
+          <div class="filters-footer">
+            <button class="clear-filters-btn" @click="clearAllFilters">Clear all filters</button>
+          </div>
+        </div>
+      </transition>
+
+      <!-- BULK TOOLBAR -->
+      <transition name="fade">
+        <div v-if="selectMode && selectedIds.size > 0" class="bulk-toolbar">
+          <span class="bulk-count">{{ selectedIds.size }} selected</span>
+          <button class="bulk-btn" @click="downloadZip">⬇ Download ZIP</button>
+          <button class="bulk-btn" @click="bulkFavorite">⭐ Favorite</button>
+          <button class="bulk-btn danger" @click="bulkTrash">🗑 Trash</button>
+          <button class="bulk-btn" @click="bulkAddToQueue">⚡ Analyze</button>
+          <button class="bulk-btn" style="margin-left:auto" @click="clearSelection">Clear</button>
+        </div>
+      </transition>
+
+      <!-- PHOTO GRID -->
+      <div class="grid-container" ref="gridContainer">
+        <div v-if="isSearchMode && photos.length > 0" style="padding-bottom:10px; font-size:12px; color:var(--muted)">
+          Results for "<span style="color:var(--amber)">{{ lastSearchQuery }}</span>" — {{ photos.length }} photos
+        </div>
+
+        <div v-if="loading && photos.length === 0" style="padding:64px; text-align:center">
+          <div class="spinner"></div>
+        </div>
+
+        <div v-else-if="!loading && photos.length === 0" class="empty-state">
+          <div class="empty-state-icon">{{ isSearchMode ? '🔍' : '📭' }}</div>
+          <div class="empty-state-text">{{ isSearchMode ? 'No results found' : 'No photos here' }}</div>
+          <div class="empty-state-sub">{{ isSearchMode ? 'Try a different query' : 'Add a folder to get started' }}</div>
+        </div>
+
+        <div v-else :class="['photo-grid', `cols-${density}`]">
+          <div
+            v-for="photo in photos"
+            :key="photo.id"
+            class="photo-card"
+            :class="{ selected: selectedIds.has(photo.id), 'is-trash': photo.is_trash }"
+            @click="onPhotoClick(photo)"
+          >
+            <!-- Selection check -->
+            <div v-if="selectMode" class="photo-select-check">
+              <span class="photo-select-checkmark">✓</span>
+            </div>
+
+            <!-- Thumbnail -->
+            <img
+              v-if="thumbError[photo.id] !== true"
+              class="photo-thumb"
+              :src="`/api/photos/${photo.id}/thumbnail`"
+              :alt="photo.filename"
+              loading="lazy"
+              @error="thumbError[photo.id] = true"
+            />
+            <div v-else class="photo-thumb-placeholder">🖼</div>
+
+            <!-- Hover desc -->
+            <div v-if="!selectMode" class="photo-hover-overlay">
+              <span class="photo-hover-desc">{{ descSnippet(photo) }}</span>
+            </div>
+
+            <!-- Badges -->
+            <span v-if="!selectMode && photo.is_favorite" class="photo-badge-fav">⭐</span>
+
+            <div
+              v-if="!selectMode && photo.overall_score != null"
+              class="photo-badge-score"
+              :class="scoreClass(photo.overall_score)"
+            >{{ photo.overall_score.toFixed(1) }}</div>
+
+            <div
+              v-if="!selectMode && photo.format && !['jpg','jpeg','png'].includes(photo.format.toLowerCase())"
+              class="photo-badge-format"
+            >{{ photo.format.toUpperCase() }}</div>
+
+            <div v-if="!selectMode && !photo.analyzed_at" class="photo-badge-unanalyzed">
+              not analyzed
+            </div>
+          </div>
+        </div>
+
+        <div v-if="hasMore && !isSearchMode" class="load-more-container">
+          <button class="load-more-btn" @click="loadMore" :disabled="loading">
+            {{ loading ? 'Loading…' : 'Load more' }}
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ─── LIGHTBOX ─── -->
+  <transition name="fade">
+    <div v-if="lightbox.open" class="lightbox-overlay" @click.self="closeLightbox">
+      <button class="lightbox-close" @click="closeLightbox">✕</button>
+      <button v-if="lightboxIndex > 0" class="lightbox-nav prev" @click="lightboxPrev">‹</button>
+      <button v-if="lightboxIndex < photos.length - 1" class="lightbox-nav next" @click="lightboxNext">›</button>
+
+      <div class="lightbox-inner">
+        <div class="lightbox-image-area">
+          <img
+            v-if="lightbox.photo"
+            class="lightbox-img"
+            :src="`/api/photos/${lightbox.photo.id}/image`"
+            :alt="lightbox.photo.filename"
+          />
+        </div>
+
+        <div v-if="lightbox.photo" class="lightbox-panel">
+
+          <!-- Score -->
+          <div>
+            <div class="lb-section-title">Score</div>
+            <div class="lb-overall-score">
+              <span class="lb-overall-big" :style="{ color: scoreColor(lightbox.photo.overall_score) }">
+                {{ lightbox.photo.overall_score != null ? lightbox.photo.overall_score.toFixed(1) : '—' }}
+              </span>
+              <span class="lb-overall-max">/10</span>
+            </div>
+            <span class="lb-quality-badge" :class="qualityClass(lightbox.photo.overall_score)">
+              {{ qualityLabel(lightbox.photo.overall_score) }}
+            </span>
+            <div style="margin-top:8px">
+              <div class="lb-score-row">
+                <span class="lb-score-label">Technical</span>
+                <span class="lb-score-value" :style="{ color: scoreColor(lightbox.photo.technical_score) }">
+                  {{ lightbox.photo.technical_score != null ? lightbox.photo.technical_score.toFixed(1) : '—' }}
+                </span>
+              </div>
+              <div class="lb-score-row">
+                <span class="lb-score-label">Aesthetic</span>
+                <span class="lb-score-value" :style="{ color: scoreColor(lightbox.photo.aesthetic_score) }">
+                  {{ lightbox.photo.aesthetic_score != null ? lightbox.photo.aesthetic_score.toFixed(1) : '—' }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Description -->
+          <div>
+            <div class="lb-section-title">Description</div>
+            <textarea
+              class="lb-description-textarea"
+              v-model="lightbox.editDesc"
+              placeholder="Add a description…"
+              rows="4"
+            ></textarea>
+            <button
+              v-if="lightbox.editDesc !== lightbox.origDesc"
+              class="lb-save-desc-btn"
+              @click="saveDescription"
+            >Save</button>
+          </div>
+
+          <!-- Subjects / Atmosphere -->
+          <div v-if="lbSubjects.length || lbAtmosphere.length">
+            <div v-if="lbSubjects.length">
+              <div class="lb-section-title">Subjects</div>
+              <div class="tags-list">
+                <span v-for="t in lbSubjects" :key="t" class="tag">{{ t }}</span>
+              </div>
+            </div>
+            <div v-if="lbAtmosphere.length" style="margin-top:8px">
+              <div class="lb-section-title">Atmosphere</div>
+              <div class="tags-list">
+                <span v-for="t in lbAtmosphere" :key="t" class="tag">{{ t }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Colors -->
+          <div v-if="lbColors.length">
+            <div class="lb-section-title">Dominant colors</div>
+            <div class="color-dots">
+              <div v-for="c in lbColors" :key="c" class="color-dot" :style="{ background: c }" :title="c"></div>
+            </div>
+          </div>
+
+          <!-- Strengths / Weaknesses -->
+          <div v-if="lbStrengths.length || lbWeaknesses.length">
+            <div v-if="lbStrengths.length">
+              <div class="lb-section-title">Strengths</div>
+              <ul class="lb-list strengths">
+                <li v-for="s in lbStrengths" :key="s">{{ s }}</li>
+              </ul>
+            </div>
+            <div v-if="lbWeaknesses.length" style="margin-top:8px">
+              <div class="lb-section-title">Weaknesses</div>
+              <ul class="lb-list weaknesses">
+                <li v-for="w in lbWeaknesses" :key="w">{{ w }}</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Location -->
+          <div v-if="lightbox.photo.location_name || lightbox.photo.latitude">
+            <div class="lb-section-title">Location</div>
+            <span style="font-size:12px">{{ lightbox.photo.location_name || 'Unknown' }}</span>
+            <a
+              v-if="lightbox.photo.latitude && lightbox.photo.longitude"
+              :href="`https://www.openstreetmap.org/?mlat=${lightbox.photo.latitude}&mlon=${lightbox.photo.longitude}&zoom=14`"
+              target="_blank"
+              style="margin-left:8px; color:var(--amber); font-size:11px; text-decoration:none"
+            >View map ↗</a>
+          </div>
+
+          <!-- EXIF -->
+          <div>
+            <div class="lb-section-title">Metadata</div>
+            <table class="exif-table">
+              <tr v-if="lightbox.photo.filename"><td>File</td><td>{{ lightbox.photo.filename }}</td></tr>
+              <tr v-if="lightbox.photo.file_size"><td>Size</td><td>{{ formatBytes(lightbox.photo.file_size) }}</td></tr>
+              <tr v-if="lightbox.photo.width && lightbox.photo.height"><td>Dims</td><td>{{ lightbox.photo.width }}×{{ lightbox.photo.height }}</td></tr>
+              <tr v-if="lightbox.photo.taken_at"><td>Date</td><td>{{ formatDate(lightbox.photo.taken_at) }}</td></tr>
+              <tr v-if="lightbox.photo.camera_make || lightbox.photo.camera_model">
+                <td>Camera</td>
+                <td>{{ [lightbox.photo.camera_make, lightbox.photo.camera_model].filter(Boolean).join(' ') }}</td>
+              </tr>
+              <tr v-if="lightbox.photo.lens_model"><td>Lens</td><td>{{ lightbox.photo.lens_model }}</td></tr>
+              <tr v-if="lightbox.photo.focal_length"><td>Focal</td><td>{{ lightbox.photo.focal_length }}mm</td></tr>
+              <tr v-if="lightbox.photo.aperture"><td>f/</td><td>{{ lightbox.photo.aperture }}</td></tr>
+              <tr v-if="lightbox.photo.shutter_speed"><td>Speed</td><td>{{ lightbox.photo.shutter_speed }}</td></tr>
+              <tr v-if="lightbox.photo.iso"><td>ISO</td><td>{{ lightbox.photo.iso }}</td></tr>
+              <tr v-if="lightbox.photo.format"><td>Format</td><td>{{ lightbox.photo.format.toUpperCase() }}</td></tr>
+            </table>
+          </div>
+
+          <!-- Actions -->
+          <div class="lb-actions">
+            <button
+              class="lb-action-btn"
+              :class="{ active: lightbox.photo.is_favorite }"
+              @click="toggleFavorite"
+            >{{ lightbox.photo.is_favorite ? '⭐ Favorited' : '☆ Add to favorites' }}</button>
+
+            <button
+              class="lb-action-btn danger"
+              :class="{ active: lightbox.photo.is_trash }"
+              @click="toggleTrash"
+            >{{ lightbox.photo.is_trash ? '🗑 In trash (undo)' : '🗑 Move to trash' }}</button>
+
+            <button class="lb-action-btn" @click="reanalyze">⚡ Re-analyze</button>
+
+            <a
+              :href="`/api/photos/${lightbox.photo.id}/image`"
+              download
+              class="lb-action-btn"
+              style="text-decoration:none"
+            >⬇ Download original</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </transition>
+
+  <!-- ─── ADD FOLDER MODAL ─── -->
+  <transition name="fade">
+    <div v-if="showAddFolder" class="modal-overlay" @click.self="showAddFolder = false">
+      <div class="modal">
+        <div class="modal-title">Add folder</div>
+        <div class="form-group">
+          <label class="form-label">Folder path *</label>
+          <input class="form-input" v-model="addFolderForm.folder_path" placeholder="/path/to/photos" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Display name</label>
+          <input class="form-input" v-model="addFolderForm.display_name" placeholder="My Photos 2024" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Default location</label>
+          <input class="form-input" v-model="addFolderForm.default_location_name" placeholder="Rome, Italy" />
+        </div>
+        <div class="form-group">
+          <label class="form-toggle">
+            <input type="checkbox" v-model="addFolderForm.auto_analyze" />
+            Auto-analyze new photos
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="showAddFolder = false">Cancel</button>
+          <button class="btn-primary" @click="submitAddFolder" :disabled="!addFolderForm.folder_path || addFolderLoading">
+            {{ addFolderLoading ? 'Scanning…' : 'Scan & add' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </transition>
+
+  <!-- ─── SETTINGS MODAL ─── -->
+  <transition name="fade">
+    <div v-if="showSettingsModal" class="modal-overlay" @click.self="showSettingsModal = false">
+      <div class="modal" style="max-width:520px">
+        <div class="modal-title">⚙️ Settings</div>
+
+        <div class="form-group">
+          <label class="form-label">AI Engine</label>
+          <select class="form-select" v-model="settingsForm.ai_engine">
+            <option value="gemini">Gemini (Google)</option>
+            <option value="ollama">Ollama (local)</option>
+          </select>
+        </div>
+
+        <template v-if="settingsForm.ai_engine === 'gemini'">
+          <div class="form-group">
+            <label class="form-label">Gemini API key</label>
+            <input class="form-input" type="password" v-model="settingsForm.gemini_api_key" placeholder="AIza…" autocomplete="off" />
+          </div>
+        </template>
+
+        <template v-if="settingsForm.ai_engine === 'ollama'">
+          <div class="form-group">
+            <label class="form-label">Ollama base URL</label>
+            <input class="form-input" v-model="settingsForm.ollama_base_url" placeholder="http://localhost:11434" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Vision model</label>
+            <input class="form-input" v-model="settingsForm.ollama_vision_model" placeholder="llava" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Embed model</label>
+            <input class="form-input" v-model="settingsForm.ollama_embed_model" placeholder="nomic-embed-text" />
+          </div>
+        </template>
+
+        <div class="form-group">
+          <button class="toolbar-btn" @click="testAiConnection" :disabled="testingAi" style="width:fit-content">
+            {{ testingAi ? 'Testing…' : '🔌 Test connection' }}
+          </button>
+          <div v-if="testResult" class="test-result" :class="testResult.ok ? 'ok' : 'err'">
+            {{ testResult.message }}
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="form-group">
+          <label class="form-label">Analysis RPM limit</label>
+          <input class="form-input" type="number" v-model.number="settingsForm.analysis_rpm_limit" min="1" max="60" />
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn-secondary" @click="showSettingsModal = false">Cancel</button>
+          <button class="btn-primary" @click="saveSettings" :disabled="savingSettings">
+            {{ savingSettings ? 'Saving…' : 'Save settings' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </transition>
+
+</div><!-- #app -->
+
+<script>
+const { createApp, ref, reactive, computed, onMounted, onBeforeUnmount } = Vue;
+
+/* ─── API HELPERS ─── */
+const apiFetch = async (url, options = {}) => {
+  try {
+    const resp = await fetch(url, {
+      headers: { 'Content-Type': 'application/json', ...options.headers },
+      ...options,
+    });
+    if (resp.status === 401) { window.location.href = '/auth/login'; return null; }
+    return resp;
+  } catch (e) {
+    console.error('API error:', url, e);
+    return null;
+  }
+};
+const apiGet    = (url)       => apiFetch(url).then(r => r?.json()).catch(() => null);
+const apiPost   = (url, data) => apiFetch(url, { method: 'POST',   body: JSON.stringify(data) }).then(r => r?.json()).catch(() => null);
+const apiPut    = (url, data) => apiFetch(url, { method: 'PUT',    body: JSON.stringify(data) }).then(r => r?.json()).catch(() => null);
+const apiDelete = (url, data) => apiFetch(url, { method: 'DELETE', body: data ? JSON.stringify(data) : undefined }).then(r => r?.json()).catch(() => null);
+
+/* ─── APP ─── */
+createApp({
+  setup() {
+
+    /* USER */
+    const user = ref(null);
+    const userInitial = computed(() => {
+      if (!user.value) return '?';
+      return ((user.value.name || user.value.email || '?')[0] || '?').toUpperCase();
+    });
+
+    /* FOLDERS */
+    const folders = ref([]);
+    const selectedFolder = ref(null);
+    const totalPhotos = ref(0);
+
+    function folderName(f) {
+      return f.display_name || f.folder_path.split('/').pop() || f.folder_path;
+    }
+
+    async function loadFolders() {
+      const data = await apiGet('/api/folders');
+      if (data) {
+        folders.value = data;
+        totalPhotos.value = data.reduce((s, f) => s + (f.photo_count || 0), 0);
+      }
+    }
+
+    /* PHOTOS */
+    const photos = ref([]);
+    const loading = ref(false);
+    const hasMore = ref(false);
+    const offset = ref(0);
+    const PAGE_SIZE = 100;
+    const density = ref(4);
+    const thumbError = reactive({});
+
+    const sortBy = ref('overall_score');
+    const sortDesc = ref(true);
+
+    function toggleSortDir() {
+      sortDesc.value = !sortDesc.value;
+      loadPhotos(true);
+    }
+
+    function buildParams(pageOffset) {
+      const p = new URLSearchParams();
+      const folder = filters.folder_path || selectedFolder.value || '';
+      if (folder) p.set('folder_path', folder);
+      p.set('sort_by', sortBy.value);
+      p.set('sort_desc', String(sortDesc.value));
+      p.set('limit', String(PAGE_SIZE));
+      p.set('offset', String(pageOffset));
+      if (filters.min_score > 1)    p.set('min_score', String(filters.min_score));
+      if (filters.only_favorites)   p.set('is_favorite', 'true');
+      if (filters.only_trash)       p.set('is_trash', 'true');
+      if (filters.analyzed !== '')  p.set('analyzed', filters.analyzed);
+      if (filters.formats.length)   p.set('format', filters.formats.join(','));
+      return p;
+    }
+
+    async function loadPhotos(reset = false) {
+      if (isSearchMode.value) return;
+      if (reset) { offset.value = 0; photos.value = []; }
+      loading.value = true;
+      const data = await apiGet(`/api/photos?${buildParams(offset.value)}`);
+      if (data) {
+        photos.value = reset ? data : [...photos.value, ...data];
+        hasMore.value = data.length === PAGE_SIZE;
+        offset.value += data.length;
+      }
+      loading.value = false;
+    }
+
+    function loadMore() { loadPhotos(false); }
+
+    function selectFolder(path) {
+      selectedFolder.value = path;
+      isSearchMode.value = false;
+      searchQuery.value = '';
+      loadPhotos(true);
+    }
+
+    /* SEARCH */
+    const searchQuery = ref('');
+    const isSearchMode = ref(false);
+    const lastSearchQuery = ref('');
+
+    async function doSearch() {
+      const q = searchQuery.value.trim();
+      if (!q) { clearSearch(); return; }
+      isSearchMode.value = true;
+      lastSearchQuery.value = q;
+      loading.value = true;
+      photos.value = [];
+      hasMore.value = false;
+
+      const payload = { query: q };
+      const f = filters;
+      if (f.folder_path || selectedFolder.value) payload.folder_path = f.folder_path || selectedFolder.value;
+      if (f.only_favorites) payload.is_favorite = true;
+      if (f.only_trash)     payload.is_trash = true;
+      if (f.min_score > 1)  payload.min_score = f.min_score;
+      if (f.date_from)      payload.date_from = f.date_from;
+      if (f.date_to)        payload.date_to = f.date_to;
+      if (f.location)       payload.location = f.location;
+      if (f.orientation)    payload.orientation = f.orientation;
+
+      const data = await apiPost('/api/search', payload);
+      if (data) photos.value = Array.isArray(data) ? data : [];
+      loading.value = false;
+    }
+
+    function clearSearch() {
+      searchQuery.value = '';
+      isSearchMode.value = false;
+      lastSearchQuery.value = '';
+      loadPhotos(true);
+    }
+
+    /* FILTERS */
+    const showFilters = ref(false);
+    const filters = reactive({
+      folder_path: '',
+      date_from: '',
+      date_to: '',
+      location: '',
+      min_score: 1,
+      analyzed: '',
+      orientation: '',
+      formats: [],
+      only_favorites: false,
+      only_trash: false,
+    });
+
+    const activeFilterCount = computed(() => {
+      let n = 0;
+      if (filters.folder_path)    n++;
+      if (filters.date_from)      n++;
+      if (filters.date_to)        n++;
+      if (filters.location)       n++;
+      if (filters.min_score > 1)  n++;
+      if (filters.analyzed)       n++;
+      if (filters.orientation)    n++;
+      if (filters.formats.length) n++;
+      if (filters.only_favorites) n++;
+      if (filters.only_trash)     n++;
+      return n;
+    });
+
+    const filterBadges = computed(() => {
+      const bs = [];
+      if (filters.folder_path)    bs.push({ key: 'folder_path',    label: `📁 ${filters.folder_path.split('/').pop()}` });
+      if (filters.date_from)      bs.push({ key: 'date_from',      label: `From ${filters.date_from}` });
+      if (filters.date_to)        bs.push({ key: 'date_to',        label: `To ${filters.date_to}` });
+      if (filters.location)       bs.push({ key: 'location',       label: `📍 ${filters.location}` });
+      if (filters.min_score > 1)  bs.push({ key: 'min_score',      label: `Score ≥ ${filters.min_score}` });
+      if (filters.analyzed === 'true')  bs.push({ key: 'analyzed', label: 'Analyzed only' });
+      if (filters.analyzed === 'false') bs.push({ key: 'analyzed', label: 'Not analyzed' });
+      if (filters.orientation)    bs.push({ key: 'orientation',    label: `⟳ ${filters.orientation}` });
+      if (filters.formats.length) bs.push({ key: 'formats',        label: `Fmt: ${filters.formats.join(',')}` });
+      if (filters.only_favorites) bs.push({ key: 'only_favorites', label: '⭐ Favorites' });
+      if (filters.only_trash)     bs.push({ key: 'only_trash',     label: '🗑 Trash' });
+      return bs;
+    });
+
+    function clearFilter(key) {
+      if (key === 'formats')        filters.formats = [];
+      else if (key === 'min_score') filters.min_score = 1;
+      else if (key === 'only_favorites') filters.only_favorites = false;
+      else if (key === 'only_trash')     filters.only_trash = false;
+      else filters[key] = '';
+      loadPhotos(true);
+    }
+
+    function clearAllFilters() {
+      Object.assign(filters, {
+        folder_path: '', date_from: '', date_to: '', location: '',
+        min_score: 1, analyzed: '', orientation: '', formats: [],
+        only_favorites: false, only_trash: false,
+      });
+      loadPhotos(true);
+    }
+
+    /* SELECT MODE */
+    const selectMode = ref(false);
+    const selectedIds = ref(new Set());
+
+    function toggleSelectMode() {
+      selectMode.value = !selectMode.value;
+      if (!selectMode.value) selectedIds.value = new Set();
+    }
+
+    function clearSelection() { selectedIds.value = new Set(); }
+
+    function onPhotoClick(photo) {
+      if (selectMode.value) {
+        const s = new Set(selectedIds.value);
+        s.has(photo.id) ? s.delete(photo.id) : s.add(photo.id);
+        selectedIds.value = s;
+      } else {
+        openLightbox(photo);
+      }
+    }
+
+    /* BULK ACTIONS */
+    async function downloadZip() {
+      const ids = [...selectedIds.value];
+      if (!ids.length) return;
+      const resp = await apiFetch('/api/export/zip', { method: 'POST', body: JSON.stringify({ photo_ids: ids }) });
+      if (!resp || !resp.ok) return;
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'photo_selection.zip'; a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function bulkFavorite() {
+      for (const id of selectedIds.value) {
+        await apiPut(`/api/photos/${id}`, { is_favorite: 1 });
+        const p = photos.value.find(x => x.id === id);
+        if (p) p.is_favorite = 1;
+      }
+    }
+
+    async function bulkTrash() {
+      for (const id of selectedIds.value) {
+        await apiPut(`/api/photos/${id}`, { is_trash: 1 });
+        const p = photos.value.find(x => x.id === id);
+        if (p) p.is_trash = 1;
+      }
+    }
+
+    async function bulkAddToQueue() {
+      await apiPost('/api/queue/add', { photo_ids: [...selectedIds.value], priority: 5 });
+      fetchQueueStatus();
+    }
+
+    /* QUEUE */
+    const queueOpen = ref(true);
+    const queue = reactive({ pending: 0, done: 0, error: 0, is_running: false, is_paused: false, current_photo: null });
+
+    const queueProgress = computed(() => {
+      const total = (queue.pending || 0) + (queue.done || 0) + (queue.error || 0);
+      if (!total) return 0;
+      return Math.round(((queue.done || 0) / total) * 100);
+    });
+
+    let queueInterval = null;
+
+    async function fetchQueueStatus() {
+      const data = await apiGet('/api/queue/status');
+      if (data) Object.assign(queue, data);
+    }
+
+    async function pauseQueue()  { await apiPost('/api/queue/pause');  fetchQueueStatus(); }
+    async function resumeQueue() { await apiPost('/api/queue/resume'); fetchQueueStatus(); }
+
+    /* LIGHTBOX */
+    const lightbox = reactive({ open: false, photo: null, editDesc: '', origDesc: '' });
+    const lightboxIndex = ref(0);
+
+    function openLightbox(photo) {
+      const desc = photo.user_description || photo.description || '';
+      lightbox.photo    = photo;
+      lightbox.editDesc = desc;
+      lightbox.origDesc = desc;
+      lightboxIndex.value = photos.value.findIndex(p => p.id === photo.id);
+      lightbox.open = true;
+    }
+
+    function closeLightbox() { lightbox.open = false; }
+
+    function lightboxNav(dir) {
+      const next = lightboxIndex.value + dir;
+      if (next < 0 || next >= photos.value.length) return;
+      lightboxIndex.value = next;
+      const p = photos.value[next];
+      const desc = p.user_description || p.description || '';
+      lightbox.photo    = p;
+      lightbox.editDesc = desc;
+      lightbox.origDesc = desc;
+    }
+
+    function lightboxPrev() { lightboxNav(-1); }
+    function lightboxNext() { lightboxNav(1); }
+
+    function safeParse(val) {
+      if (!val) return [];
+      if (Array.isArray(val)) return val;
+      try { return JSON.parse(val); } catch { return []; }
+    }
+
+    const lbSubjects   = computed(() => safeParse(lightbox.photo?.subjects));
+    const lbAtmosphere = computed(() => safeParse(lightbox.photo?.atmosphere_tags));
+    const lbColors     = computed(() => safeParse(lightbox.photo?.dominant_colors));
+    const lbStrengths  = computed(() => safeParse(lightbox.photo?.strengths));
+    const lbWeaknesses = computed(() => safeParse(lightbox.photo?.weaknesses));
+
+    async function saveDescription() {
+      if (!lightbox.photo) return;
+      await apiPut(`/api/photos/${lightbox.photo.id}`, { user_description: lightbox.editDesc });
+      lightbox.photo.user_description = lightbox.editDesc;
+      lightbox.origDesc = lightbox.editDesc;
+    }
+
+    async function toggleFavorite() {
+      if (!lightbox.photo) return;
+      const val = lightbox.photo.is_favorite ? 0 : 1;
+      await apiPut(`/api/photos/${lightbox.photo.id}`, { is_favorite: val });
+      lightbox.photo.is_favorite = val;
+      const gp = photos.value.find(p => p.id === lightbox.photo.id);
+      if (gp) gp.is_favorite = val;
+    }
+
+    async function toggleTrash() {
+      if (!lightbox.photo) return;
+      const val = lightbox.photo.is_trash ? 0 : 1;
+      await apiPut(`/api/photos/${lightbox.photo.id}`, { is_trash: val });
+      lightbox.photo.is_trash = val;
+      const gp = photos.value.find(p => p.id === lightbox.photo.id);
+      if (gp) gp.is_trash = val;
+    }
+
+    async function reanalyze() {
+      if (!lightbox.photo) return;
+      await apiPost('/api/queue/add', { photo_ids: [lightbox.photo.id], priority: 1 });
+      fetchQueueStatus();
+    }
+
+    /* SCORE HELPERS */
+    function scoreClass(s) {
+      if (s == null) return 'score-gray';
+      return s >= 8 ? 'score-green' : s >= 6 ? 'score-amber' : 'score-gray';
+    }
+
+    function scoreColor(s) {
+      if (s == null) return 'var(--muted)';
+      return s >= 8 ? 'var(--green)' : s >= 6 ? 'var(--amber)' : 'var(--muted)';
+    }
+
+    function qualityLabel(s) {
+      if (s == null) return 'Not analyzed';
+      if (s >= 8.5) return 'Excellent';
+      if (s >= 7)   return 'Good';
+      if (s >= 5)   return 'Average';
+      return 'Poor';
+    }
+
+    function qualityClass(s) {
+      if (s == null) return 'quality-average';
+      if (s >= 8.5) return 'quality-excellent';
+      if (s >= 7)   return 'quality-good';
+      if (s >= 5)   return 'quality-average';
+      return 'quality-poor';
+    }
+
+    function formatBytes(b) {
+      if (!b) return '—';
+      if (b < 1024) return b + ' B';
+      if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+      return (b / 1048576).toFixed(1) + ' MB';
+    }
+
+    function formatDate(s) {
+      if (!s) return '—';
+      try { return new Date(s).toLocaleString(); } catch { return s; }
+    }
+
+    function descSnippet(photo) {
+      const d = photo.user_description || photo.description || '';
+      return d.slice(0, 80) || photo.filename;
+    }
+
+    /* FOLDERS MANAGEMENT */
+    async function rescanFolder(folder) {
+      await apiPost('/api/folders/rescan', { folder_path: folder.folder_path });
+      await loadFolders();
+    }
+
+    async function deleteFolder(folder) {
+      const name = folderName(folder);
+      if (!confirm(`Remove folder "${name}" from the catalog?\n\nPhoto files will NOT be deleted — only the database entries.`)) return;
+      await apiDelete('/api/folders', { folder_path: folder.folder_path });
+      if (selectedFolder.value === folder.folder_path) selectedFolder.value = null;
+      await loadFolders();
+      loadPhotos(true);
+    }
+
+    /* ADD FOLDER MODAL */
+    const showAddFolder = ref(false);
+    const addFolderLoading = ref(false);
+    const addFolderForm = reactive({ folder_path: '', display_name: '', default_location_name: '', auto_analyze: false });
+
+    function openAddFolder() {
+      Object.assign(addFolderForm, { folder_path: '', display_name: '', default_location_name: '', auto_analyze: false });
+      showAddFolder.value = true;
+    }
+
+    async function submitAddFolder() {
+      if (!addFolderForm.folder_path) return;
+      addFolderLoading.value = true;
+      const payload = {
+        folder_path: addFolderForm.folder_path,
+        auto_analyze: addFolderForm.auto_analyze ? 1 : 0,
+      };
+      if (addFolderForm.display_name)          payload.display_name = addFolderForm.display_name;
+      if (addFolderForm.default_location_name) payload.default_location_name = addFolderForm.default_location_name;
+      const result = await apiPost('/api/folders/scan', payload);
+      addFolderLoading.value = false;
+      if (result !== null) {
+        showAddFolder.value = false;
+        await loadFolders();
+        loadPhotos(true);
+      }
+    }
+
+    /* SETTINGS MODAL */
+    const showSettingsModal = ref(false);
+    const savingSettings = ref(false);
+    const testingAi = ref(false);
+    const testResult = ref(null);
+    const settingsForm = reactive({
+      ai_engine: 'gemini',
+      gemini_api_key: '',
+      ollama_base_url: 'http://localhost:11434',
+      ollama_vision_model: 'llava',
+      ollama_embed_model: 'nomic-embed-text',
+      analysis_rpm_limit: 10,
+    });
+
+    async function openSettings() {
+      testResult.value = null;
+      const data = await apiGet('/api/settings');
+      if (data) {
+        if (data.ai_engine)            settingsForm.ai_engine = data.ai_engine;
+        if (data.gemini_api_key)       settingsForm.gemini_api_key = data.gemini_api_key;
+        if (data.ollama_base_url)      settingsForm.ollama_base_url = data.ollama_base_url;
+        if (data.ollama_vision_model)  settingsForm.ollama_vision_model = data.ollama_vision_model;
+        if (data.ollama_embed_model)   settingsForm.ollama_embed_model = data.ollama_embed_model;
+        if (data.analysis_rpm_limit)   settingsForm.analysis_rpm_limit = Number(data.analysis_rpm_limit);
+      }
+      showSettingsModal.value = true;
+    }
+
+    async function saveSettings() {
+      savingSettings.value = true;
+      const payload = {
+        ai_engine: settingsForm.ai_engine,
+        analysis_rpm_limit: String(settingsForm.analysis_rpm_limit),
+      };
+      if (settingsForm.ai_engine === 'gemini' && settingsForm.gemini_api_key) {
+        payload.gemini_api_key = settingsForm.gemini_api_key;
+      }
+      if (settingsForm.ai_engine === 'ollama') {
+        payload.ollama_base_url      = settingsForm.ollama_base_url;
+        payload.ollama_vision_model  = settingsForm.ollama_vision_model;
+        payload.ollama_embed_model   = settingsForm.ollama_embed_model;
+      }
+      await apiPut('/api/settings', payload);
+      savingSettings.value = false;
+      showSettingsModal.value = false;
+    }
+
+    async function testAiConnection() {
+      testingAi.value = true;
+      testResult.value = null;
+      const resp = await apiFetch('/api/settings/test-ai', { method: 'POST', body: JSON.stringify({}) });
+      if (resp && resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        testResult.value = { ok: true, message: data.message || 'Connection successful!' };
+      } else {
+        testResult.value = { ok: false, message: 'Connection failed. Check your settings.' };
+      }
+      testingAi.value = false;
+    }
+
+    /* KEYBOARD */
+    function onKeydown(e) {
+      if (lightbox.open) {
+        if (e.key === 'ArrowLeft')  lightboxPrev();
+        if (e.key === 'ArrowRight') lightboxNext();
+        if (e.key === 'Escape')     closeLightbox();
+      } else if (e.key === 'Escape') {
+        if (showSettingsModal.value)  { showSettingsModal.value = false; return; }
+        if (showAddFolder.value)      { showAddFolder.value = false; return; }
+        if (isSearchMode.value)       { clearSearch(); return; }
+        if (selectMode.value)         { toggleSelectMode(); }
+      }
+    }
+
+    /* INIT */
+    onMounted(async () => {
+      const me = await apiGet('/auth/me');
+      if (!me) return;
+      user.value = me;
+
+      await loadFolders();
+      await loadPhotos(true);
+      await fetchQueueStatus();
+
+      queueInterval = setInterval(fetchQueueStatus, 5000);
+      window.addEventListener('keydown', onKeydown);
+    });
+
+    onBeforeUnmount(() => {
+      if (queueInterval) clearInterval(queueInterval);
+      window.removeEventListener('keydown', onKeydown);
+    });
+
+    return {
+      user, userInitial,
+      folders, selectedFolder, totalPhotos, folderName,
+      selectFolder, rescanFolder, deleteFolder,
+      photos, loading, hasMore, density, thumbError,
+      sortBy, sortDesc, toggleSortDir,
+      loadPhotos, loadMore,
+      searchQuery, isSearchMode, lastSearchQuery, doSearch, clearSearch,
+      showFilters, filters, activeFilterCount, filterBadges, clearFilter, clearAllFilters,
+      selectMode, selectedIds, toggleSelectMode, clearSelection, onPhotoClick,
+      downloadZip, bulkFavorite, bulkTrash, bulkAddToQueue,
+      queueOpen, queue, queueProgress, pauseQueue, resumeQueue,
+      lightbox, lightboxIndex, openLightbox, closeLightbox, lightboxPrev, lightboxNext,
+      lbSubjects, lbAtmosphere, lbColors, lbStrengths, lbWeaknesses,
+      saveDescription, toggleFavorite, toggleTrash, reanalyze,
+      scoreClass, scoreColor, qualityLabel, qualityClass,
+      formatBytes, formatDate, descSnippet,
+      showAddFolder, addFolderLoading, addFolderForm, openAddFolder, submitAddFolder,
+      showSettingsModal, savingSettings, testingAi, testResult, settingsForm,
+      openSettings, saveSettings, testAiConnection,
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
