@@ -70,6 +70,10 @@ def get_photos(
     analyzed_only: Optional[bool] = None,
     min_score: Optional[float] = None,
     format: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    location: Optional[str] = None,
+    orientation: Optional[str] = None,
     sort_by: str = "id",
     sort_desc: bool = False,
     limit: int = 100,
@@ -99,6 +103,21 @@ def get_photos(
     if format is not None:
         conditions.append("format = ?")
         params.append(format)
+    if date_from is not None:
+        conditions.append("substr(exif_date, 1, 10) >= ?")
+        params.append(date_from)
+    if date_to is not None:
+        conditions.append("substr(exif_date, 1, 10) <= ?")
+        params.append(date_to)
+    if location is not None:
+        conditions.append("location_name LIKE ?")
+        params.append(f"%{location}%")
+    if orientation == "horizontal":
+        conditions.append("width > height")
+    elif orientation == "vertical":
+        conditions.append("height > width")
+    elif orientation == "square":
+        conditions.append("width = height")
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     order = f"ORDER BY {sort_by} {'DESC' if sort_desc else 'ASC'}"
@@ -135,6 +154,21 @@ def count_photos(
             f"SELECT COUNT(*) FROM photos {where}", params
         ).fetchone()
         return row[0]
+
+
+def get_photo_id_by_path(db_path: Optional[str], file_path: str) -> Optional[int]:
+    """Ritorna l'id del record photo con il dato file_path, o None se non trovato."""
+    with get_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT id FROM photos WHERE file_path = ?", (file_path,)
+        ).fetchone()
+        return row["id"] if row else None
+
+
+def delete_photo_by_path(db_path: Optional[str], file_path: str) -> None:
+    """Rimuove il record photo con il dato file_path."""
+    with get_db(db_path) as conn:
+        conn.execute("DELETE FROM photos WHERE file_path = ?", (file_path,))
 
 
 def update_photo(db_path: Optional[str], photo_id: int, **fields) -> None:
