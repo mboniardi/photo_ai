@@ -53,10 +53,10 @@ class TestExportZip:
         resp = c.post("/api/export/zip", json={"photo_ids": []})
         assert resp.status_code == 400
 
-    def test_invalid_photo_id_skipped_gracefully(self, client_with_photo):
+    def test_invalid_photo_id_returns_404(self, client_with_photo):
         c, pid = client_with_photo
         resp = c.post("/api/export/zip", json={"photo_ids": [99999]})
-        assert resp.status_code == 200
+        assert resp.status_code == 404
 
     def test_multiple_photos_in_zip(self, client_with_photo, tmp_path, monkeypatch):
         c, pid = client_with_photo

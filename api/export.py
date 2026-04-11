@@ -26,6 +26,7 @@ def export_zip(req: ExportRequest):
     zip_filename = f"foto_selezione_{timestamp}.zip"
 
     buf = io.BytesIO()
+    added = 0
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         for photo_id in req.photo_ids:
             photo = get_photo_by_id(config.LOCAL_DB, photo_id)
@@ -34,12 +35,17 @@ def export_zip(req: ExportRequest):
             try:
                 with open(photo["file_path"], "rb") as f:
                     zf.writestr(photo["filename"], f.read())
+                added += 1
             except OSError:
                 continue
+
+    if added == 0:
+        raise HTTPException(status_code=404, detail="Nessuna foto trovata o accessibile")
+
     buf.seek(0)
 
     return StreamingResponse(
-        iter([buf.read()]),
+        buf,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
     )

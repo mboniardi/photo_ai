@@ -72,7 +72,7 @@ def semantic_search(
         date_to=date_to,
         location=location,
         orientation=orientation,
-        limit=100_000,
+        limit=100_000,  # full pre-filter scan; sufficient for any personal photo library
     )
 
     results: list[dict] = []

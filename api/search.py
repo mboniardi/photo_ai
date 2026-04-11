@@ -25,7 +25,6 @@ class SearchRequest(BaseModel):
 
 
 async def _get_engine():
-    """Returns the configured AI engine (Gemini or Ollama)."""
     from services.ai.gemini import GeminiEngine
     from services.ai.ollama import OllamaEngine
 
@@ -51,6 +50,7 @@ async def search_photos(req: SearchRequest):
 
     is_quality = is_quality_query(req.query)
     limit = req.limit if req.limit is not None else extract_limit(req.query)
+    is_trash = req.is_trash if req.is_trash is not None else False
 
     return semantic_search(
         config.LOCAL_DB,
@@ -59,7 +59,7 @@ async def search_photos(req: SearchRequest):
         limit=limit,
         folder_path=req.folder_path,
         is_favorite=req.is_favorite,
-        is_trash=req.is_trash,
+        is_trash=is_trash,
         min_score=req.min_score,
         format=req.format,
         date_from=req.date_from,
