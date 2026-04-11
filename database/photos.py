@@ -7,6 +7,13 @@ from typing import Optional
 from database import get_db
 
 
+_ALLOWED_SORT_COLUMNS = frozenset({
+    "id", "filename", "exif_date", "file_size", "width", "height",
+    "overall_score", "technical_score", "aesthetic_score",
+    "analyzed_at", "created_at", "updated_at", "folder_path",
+})
+
+
 def insert_photo(
     db_path: Optional[str] = None,
     *,
@@ -83,6 +90,9 @@ def get_photos(
     Lista foto con filtri combinati (AND logico).
     Ritorna lista di sqlite3.Row.
     """
+    if sort_by not in _ALLOWED_SORT_COLUMNS:
+        sort_by = "id"
+
     conditions = []
     params = []
 
@@ -91,8 +101,12 @@ def get_photos(
         params.append(folder_path)
     if is_favorite is True:
         conditions.append("is_favorite = 1")
+    elif is_favorite is False:
+        conditions.append("is_favorite = 0")
     if is_trash is True:
         conditions.append("is_trash = 1")
+    elif is_trash is False:
+        conditions.append("is_trash = 0")
     if analyzed_only is True:
         conditions.append("analyzed_at IS NOT NULL")
     if analyzed_only is False:

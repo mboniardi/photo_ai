@@ -17,7 +17,6 @@ SIMILARITY_THRESHOLD = 0.25
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
-    """Cosine similarity in [-1, 1]. Returns 0.0 if either vector is zero-norm."""
     va = np.array(a, dtype=np.float32)
     vb = np.array(b, dtype=np.float32)
     norm_a = float(np.linalg.norm(va))
@@ -48,7 +47,7 @@ def semantic_search(
     threshold: float = SIMILARITY_THRESHOLD,
     folder_path: Optional[str] = None,
     is_favorite: Optional[bool] = None,
-    is_trash: Optional[bool] = None,
+    is_trash: Optional[bool] = False,
     min_score: Optional[float] = None,
     format: Optional[str] = None,
     date_from: Optional[str] = None,
