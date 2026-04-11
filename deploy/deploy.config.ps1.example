@@ -1,0 +1,38 @@
+# deploy.config.ps1.example
+# Copy this file to deploy.config.ps1 and fill in your values.
+# DO NOT commit deploy.config.ps1 to git — it contains secrets.
+
+# ── Rete ────────────────────────────────────────────────────────
+$VM_STATIC_IP      = "192.168.1.100"
+$VM_GATEWAY        = "192.168.1.1"
+$VM_DNS            = "192.168.1.1"
+$VM_NETMASK        = "24"
+$HYPERV_SWITCH     = "Default Switch"
+
+# ── VM ──────────────────────────────────────────────────────────
+$VM_NAME_PREFIX    = "PhotoAI"
+$VM_RAM_GB         = 2
+$VM_CPU_COUNT      = 2
+$VM_DISK_GB        = 20
+$VM_GEN            = 2
+
+# ── NAS ─────────────────────────────────────────────────────────
+$NAS_PHOTOS_PATH   = "//192.168.1.10/foto"
+$NAS_DATA_PATH     = "//192.168.1.10/photo_ai_data"
+$NAS_USER          = "nasuser"
+$NAS_PASSWORD      = "CHANGE_ME"
+
+# ── App ─────────────────────────────────────────────────────────
+$APP_PORT          = 8080
+$APP_GIT_REPO      = "https://github.com/YOUR_USERNAME/photo_ai.git"
+$APP_GIT_BRANCH    = "main"
+
+# ── Secrets ─────────────────────────────────────────────────────
+$GOOGLE_CLIENT_ID     = "YOUR_CLIENT_ID.apps.googleusercontent.com"
+$GOOGLE_CLIENT_SECRET = "CHANGE_ME"
+$GEMINI_API_KEY       = "CHANGE_ME"
+$AUTHORIZED_EMAILS    = @("your@gmail.com")
+
+# ── Health check ────────────────────────────────────────────────
+$HEALTH_TIMEOUT_SEC   = 300
+$HEALTH_INTERVAL_SEC  = 10
