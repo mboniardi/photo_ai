@@ -20,6 +20,8 @@ from api.settings import router as settings_router
 from api.folders  import router as folders_router
 from api.photos   import router as photos_router
 from api.queue    import router as queue_router, set_worker
+from api.search   import router as search_router
+from api.export   import router as export_router
 
 START_TIME = time.time()
 
@@ -34,6 +36,8 @@ app.include_router(settings_router)
 app.include_router(folders_router)
 app.include_router(photos_router)
 app.include_router(queue_router)
+app.include_router(search_router)
+app.include_router(export_router)
 
 
 # ── Health ────────────────────────────────────────────────────────
