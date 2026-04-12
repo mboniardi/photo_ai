@@ -52,16 +52,11 @@ if ($LASTEXITCODE -ne 0 -and -not $wslStatus) {
     exit 1
 }
 
-# Check for existing VM with same IP (for cleanup in Phase 8)
-Write-Host "  Checking for existing VMs with IP $VM_STATIC_IP…"
-$oldVM = $null
-Get-VM | ForEach-Object {
-    $vmObj = $_
-    $ips = (Get-VMNetworkAdapter $vmObj).IPAddresses
-    if ($ips -contains $VM_STATIC_IP) {
-        $oldVM = $vmObj
-        Write-Host "  Found existing VM: $($vmObj.Name) — will be removed after deploy."
-    }
+# Check for existing PhotoAI VMs (for cleanup in Phase 7)
+Write-Host "  Checking for existing PhotoAI VMs…"
+$oldVMs = Get-VM | Where-Object { $_.Name -like "$VM_NAME_PREFIX-*" }
+if ($oldVMs) {
+    $oldVMs | ForEach-Object { Write-Host "  Found existing VM: $($_.Name) — will be removed after deploy." }
 }
 
 # Generate unique VM name and secret key
@@ -309,15 +304,17 @@ Write-Host "  /auth/login → $loginStatus (redirect to Google is OK)"
 # ═══════════════════════════════════════════════════════════════════
 Write-Host "`n[Phase 7] Cleanup" -ForegroundColor Cyan
 
-# Remove old VM and its disk
-if ($oldVM) {
-    Write-Host "  Stopping and removing old VM: $($oldVM.Name)…"
-    $oldVhdx = (Get-VMHardDiskDrive $oldVM).Path
-    Stop-VM -Name $oldVM.Name -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 3
-    Remove-VM -Name $oldVM.Name -Force -ErrorAction SilentlyContinue
-    if ($oldVhdx) { Remove-Item $oldVhdx -Force -ErrorAction SilentlyContinue }
-    Write-Host "  Old VM removed."
+# Remove old VMs and their disks
+if ($oldVMs) {
+    $oldVMs | ForEach-Object {
+        Write-Host "  Stopping and removing old VM: $($_.Name)…"
+        $oldVhdx = (Get-VMHardDiskDrive $_).Path
+        Stop-VM -Name $_.Name -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 3
+        Remove-VM -Name $_.Name -Force -ErrorAction SilentlyContinue
+        if ($oldVhdx) { Remove-Item $oldVhdx -Force -ErrorAction SilentlyContinue }
+        Write-Host "  Old VM removed: $($_.Name)"
+    }
 }
 
 # Clean up cloud-init staging directory
