@@ -34,5 +34,5 @@ $GEMINI_API_KEY       = "CHANGE_ME"
 $AUTHORIZED_EMAILS    = @("your@gmail.com")
 
 # ── Health check ────────────────────────────────────────────────
-$HEALTH_TIMEOUT_SEC   = 300
+$HEALTH_TIMEOUT_SEC   = 900
 $HEALTH_INTERVAL_SEC  = 10
