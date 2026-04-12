@@ -1,7 +1,10 @@
 """Route /api/settings — lettura e aggiornamento impostazioni app."""
+import logging
 from fastapi import APIRouter, HTTPException
 from database.settings import get_all_settings, get_setting, set_setting
 import config
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -45,6 +48,7 @@ def test_ai_connection():
             r.raise_for_status()
             return {"ok": True, "message": f"Ollama raggiungibile su {base_url}"}
     except Exception as exc:
+        logger.error("test-ai failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail=str(exc))
 
 
