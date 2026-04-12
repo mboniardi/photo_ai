@@ -171,29 +171,39 @@ write_files:
       GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET
       SECRET_KEY=$SECRET_KEY
       GEMINI_API_KEY=$GEMINI_API_KEY
-      AUTHORIZED_EMAILS_PATH=/mnt/nas/photo_ai_data/authorized_emails.txt
-      APP_DATA_PATH=/mnt/nas/photo_ai_data
+      AUTHORIZED_EMAILS_PATH=/opt/photo_ai/data/authorized_emails.txt
+      APP_DATA_PATH=/opt/photo_ai/data
       LOCAL_DB=/opt/photo_ai/data/photo_ai.db
       NAS_CIFS_USER=$NAS_USER
       NAS_CIFS_PASSWORD=$NAS_PASSWORD
       APP_PORT=$APP_PORT
+
+  - path: /etc/nas-credentials
+    permissions: '0600'
+    content: |
+      username=$NAS_USER
+      password=$NAS_PASSWORD
 
 package_update: true
 packages:
   - software-properties-common
   - rsync
   - openssh-server
+  - cifs-utils
 
 runcmd:
   - netplan apply
   - add-apt-repository universe -y
   - apt-get update -y
+  - mkdir -p /mnt/nas
+  - "echo '//${NAS_SERVER}/${NAS_SHARE} /mnt/nas cifs credentials=/etc/nas-credentials,vers=3.0,_netdev,nofail 0 0' >> /etc/fstab"
+  - mount -a || true
   - rm -rf /opt/photo_ai
   - git clone $APP_GIT_REPO -b $APP_GIT_BRANCH /opt/photo_ai
   - mv /tmp/photo_ai.env /opt/photo_ai/.env
   - bash /opt/photo_ai/install.sh
-  - mkdir -p /mnt/nas/photo_ai_data
-  - "printf '$authorizedEmailsWriteFile\n' > /mnt/nas/photo_ai_data/authorized_emails.txt || true"
+  - mkdir -p /opt/photo_ai/data
+  - "printf '$authorizedEmailsWriteFile\n' > /opt/photo_ai/data/authorized_emails.txt || true"
 "@ | Set-Content "$ciDir\user-data" -Encoding UTF8
 
 # Create ISO — try oscdimg (Windows ADK) first, fall back to WSL2 mkisofs

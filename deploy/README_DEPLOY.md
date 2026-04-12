@@ -59,6 +59,10 @@ Key fields:
 | `$VM_DNS` | DNS server (usually same as gateway) |
 | `$VM_NETMASK` | Subnet prefix length (e.g. `24`) |
 | `$HYPERV_SWITCH` | Hyper-V virtual switch name — use `Get-VMSwitch` to list |
+| `$NAS_SERVER` | Hostname o IP del server SMB (es. `dl380.boniardi.org`) |
+| `$NAS_SHARE` | Nome della share SMB (es. `Media`) |
+| `$NAS_PHOTOS_SUBDIR` | Sottocartella dentro la share con le foto (es. `photos`). Lascia vuoto se le foto sono nella root. |
+| `$NAS_USER` / `$NAS_PASSWORD` | Credenziali SMB — scritte in `/etc/nas-credentials` (chmod 600) |
 | `$APP_GIT_REPO` | `https://github.com/mboniardi/photo_ai.git` |
 | `$GOOGLE_CLIENT_ID` | From Google Cloud Console |
 | `$GOOGLE_CLIENT_SECRET` | From Google Cloud Console |

@@ -17,8 +17,9 @@ $VM_DISK_GB        = 20
 $VM_GEN            = 2
 
 # ── NAS ─────────────────────────────────────────────────────────
-$NAS_PHOTOS_PATH   = "//192.168.1.10/foto"
-$NAS_DATA_PATH     = "//192.168.1.10/photo_ai_data"
+$NAS_SERVER        = "192.168.1.10"          # hostname o IP del NAS/PC che espone la share SMB
+$NAS_SHARE         = "foto"                  # nome della share SMB (es. "Media")
+$NAS_PHOTOS_SUBDIR = "photos"                # sottocartella dentro la share dove stanno le foto (lascia vuoto se le foto sono nella root della share)
 $NAS_USER          = "nasuser"
 $NAS_PASSWORD      = "CHANGE_ME"
 
