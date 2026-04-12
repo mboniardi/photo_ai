@@ -175,7 +175,7 @@ write_files:
       SECRET_KEY=$SECRET_KEY
       GEMINI_API_KEY=$GEMINI_API_KEY
       AUTHORIZED_EMAILS_PATH=/opt/photo_ai/data/authorized_emails.txt
-      APP_DATA_PATH=/opt/photo_ai/data
+      APP_DATA_PATH=/mnt/nas/photo_ai_data
       LOCAL_DB=/opt/photo_ai/data/photo_ai.db
       NAS_CIFS_USER=$NAS_USER
       NAS_CIFS_PASSWORD=$NAS_PASSWORD

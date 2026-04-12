@@ -24,6 +24,9 @@ def load_db_from_nas(
     if not os.path.exists(remote):
         return False
 
+    if os.path.abspath(remote) == os.path.abspath(local):
+        return False
+
     if dirname := os.path.dirname(local):
         os.makedirs(dirname, exist_ok=True)
     shutil.copy2(remote, local)
