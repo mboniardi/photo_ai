@@ -52,11 +52,15 @@ if ($LASTEXITCODE -ne 0 -and -not $wslStatus) {
     exit 1
 }
 
-# Check for existing PhotoAI VMs (for cleanup in Phase 7)
+# Stop existing PhotoAI VMs now to avoid IP conflict, remove after deploy
 Write-Host "  Checking for existing PhotoAI VMs…"
-$oldVMs = Get-VM | Where-Object { $_.Name -like "$VM_NAME_PREFIX-*" }
+$oldVMs = @(Get-VM | Where-Object { $_.Name -like "$VM_NAME_PREFIX-*" })
 if ($oldVMs) {
-    $oldVMs | ForEach-Object { Write-Host "  Found existing VM: $($_.Name) — will be removed after deploy." }
+    $oldVMs | ForEach-Object {
+        Write-Host "  Stopping existing VM: $($_.Name) (same static IP — must stop before new VM starts)"
+        Stop-VM -Name $_.Name -Force -ErrorAction SilentlyContinue
+    }
+    Write-Host "  Old VM(s) stopped. Will be removed after new VM is healthy."
 }
 
 # Generate unique VM name and secret key
