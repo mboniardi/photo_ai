@@ -131,6 +131,31 @@ class TestUpdatePhoto:
         assert photo["subject"] == "tramonto"
 
 
+class TestDeletePhotoByPath:
+    def test_delete_existing(self, tmp_db):
+        from database.photos import insert_photo, delete_photo_by_path, get_photo_by_id
+        pid = insert_photo(tmp_db, **PHOTO_DEFAULTS)
+        delete_photo_by_path(tmp_db, PHOTO_DEFAULTS["file_path"])
+        assert get_photo_by_id(tmp_db, pid) is None
+
+    def test_delete_nonexistent_is_noop(self, tmp_db):
+        from database.photos import delete_photo_by_path
+        # Should not raise
+        delete_photo_by_path(tmp_db, "/nonexistent/path.jpg")
+
+
+class TestGetPhotoIdByPath:
+    def test_returns_id_for_existing(self, tmp_db):
+        from database.photos import insert_photo, get_photo_id_by_path
+        pid = insert_photo(tmp_db, **PHOTO_DEFAULTS)
+        result = get_photo_id_by_path(tmp_db, PHOTO_DEFAULTS["file_path"])
+        assert result == pid
+
+    def test_returns_none_for_missing(self, tmp_db):
+        from database.photos import get_photo_id_by_path
+        assert get_photo_id_by_path(tmp_db, "/nonexistent/path.jpg") is None
+
+
 class TestCountPhotos:
     def test_count_all(self, tmp_db):
         from database.photos import insert_photo, count_photos

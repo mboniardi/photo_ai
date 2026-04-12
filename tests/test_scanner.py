@@ -104,3 +104,19 @@ class TestScanFolder:
         make_jpeg(path, width=800)
         result2 = scan_folder(str(tmp_path), db_path=tmp_db)
         assert result2.new == 1  # reindexed
+
+    def test_rescan_preserves_user_flags(self, tmp_path, tmp_db):
+        from services.scanner import scan_folder
+        from database.photos import get_photo_by_id, update_photo
+        path = str(tmp_path / "photo.jpg")
+        make_jpeg(path, width=100)
+        result1 = scan_folder(str(tmp_path), db_path=tmp_db)
+        pid = result1.new_photo_ids[0]
+        # Set user flag
+        update_photo(tmp_db, pid, is_favorite=1)
+        # Change the file
+        make_jpeg(path, width=800)
+        result2 = scan_folder(str(tmp_path), db_path=tmp_db)
+        # User flag must survive re-index
+        photo = get_photo_by_id(tmp_db, result2.new_photo_ids[0])
+        assert photo["is_favorite"] == 1
