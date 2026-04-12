@@ -182,18 +182,14 @@ write_files:
 
 package_update: true
 packages:
-  - git
-  - curl
-  - python3.11
-  - python3.11-venv
-  - python3-pip
-  - libheif-dev
-  - libraw-dev
+  - software-properties-common
   - rsync
   - openssh-server
 
 runcmd:
   - netplan apply
+  - add-apt-repository universe -y
+  - apt-get update -y
   - rm -rf /opt/photo_ai
   - git clone $APP_GIT_REPO -b $APP_GIT_BRANCH /opt/photo_ai
   - bash /opt/photo_ai/install.sh

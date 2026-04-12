@@ -11,6 +11,9 @@ APP_USER="photoai"
 # ── 1. System packages ────────────────────────────────────────────
 echo "[1/6] Updating system packages…"
 apt-get update -y
+apt-get install -y software-properties-common
+add-apt-repository universe -y
+apt-get update -y
 apt-get upgrade -y
 apt-get install -y \
     python3.11 python3.11-venv python3-pip \
