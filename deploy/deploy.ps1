@@ -144,22 +144,25 @@ users:
     plain_text_passwd: $CONSOLE_PASSWD
     ssh_authorized_keys: []
 
-package_update: true
-packages:
-  - git
-  - curl
-  - python3.11
-  - python3.11-venv
-  - python3-pip
-  - libheif-dev
-  - libraw-dev
-  - rsync
-  - openssh-server
-
+# Static IP configured from first boot — no DHCP phase needed
 write_files:
+  - path: /etc/netplan/01-static.yaml
+    permissions: '0600'
+    content: |
+      network:
+        version: 2
+        ethernets:
+          eth0:
+            addresses: [$VM_STATIC_IP/$VM_NETMASK]
+            routes:
+              - to: default
+                via: $VM_GATEWAY
+            nameservers:
+              addresses: [$VM_DNS]
+
   - path: /opt/photo_ai/.env
     permissions: '0600'
-    owner: photoai:photoai
+    owner: root:root
     content: |
       GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
       GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET
@@ -172,9 +175,23 @@ write_files:
       NAS_CIFS_PASSWORD=$NAS_PASSWORD
       APP_PORT=$APP_PORT
 
+package_update: true
+packages:
+  - git
+  - curl
+  - python3.11
+  - python3.11-venv
+  - python3-pip
+  - libheif-dev
+  - libraw-dev
+  - rsync
+  - openssh-server
+
 runcmd:
+  - netplan apply
   - mkdir -p /opt/photo_ai
   - git clone $APP_GIT_REPO -b $APP_GIT_BRANCH /opt/photo_ai
+  - cp /opt/photo_ai/.env /opt/photo_ai/.env.bak || true
   - bash /opt/photo_ai/install.sh
   - mkdir -p /mnt/nas/photo_ai_data
   - "printf '$authorizedEmailsWriteFile\n' > /mnt/nas/photo_ai_data/authorized_emails.txt || true"
@@ -228,35 +245,18 @@ Write-Host "  VM '$VM_NAME' created."
 Write-Host "`n[Phase 5] Starting VM and waiting for health check" -ForegroundColor Cyan
 
 Start-VM -Name $VM_NAME
-Write-Host "  VM started. Waiting for IP assignment…"
+Write-Host "  VM started. Static IP configured: $VM_STATIC_IP"
+Write-Host "  Polling http://${VM_STATIC_IP}:${APP_PORT}/health (timeout: ${HEALTH_TIMEOUT_SEC}s)…"
+Write-Host "  (First boot installs packages — typically 5-10 minutes)" -ForegroundColor DarkGray
 
-# Wait for DHCP IP (Ubuntu first-boot with cloud-init can take several minutes)
-$VM_TEMP_IP = $null
-$ipWait = 0
-while (-not $VM_TEMP_IP -and $ipWait -lt 300) {
-    Start-Sleep -Seconds 10
-    $ipWait += 10
-    $VM_TEMP_IP = (Get-VMNetworkAdapter $vm | Select-Object -ExpandProperty IPAddresses |
-                   Where-Object { $_ -match '^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$' } |
-                   Select-Object -First 1)
-    Write-Host "  [${ipWait}s] Waiting for DHCP IP…" -ForegroundColor DarkGray
-}
-if (-not $VM_TEMP_IP) {
-    Write-Error "Could not get VM IP via DHCP after 300 seconds. Check Hyper-V switch with: Get-VMSwitch"
-    Stop-VM -Name $VM_NAME -Force
-    Remove-VM -Name $VM_NAME -Force
-    exit 1
-}
-Write-Host "  VM DHCP IP: $VM_TEMP_IP"
-Write-Host "  Polling http://${VM_TEMP_IP}:${APP_PORT}/health (timeout: ${HEALTH_TIMEOUT_SEC}s)…"
-
+$resp = $null
 $healthy = $false
 $elapsed = 0
 do {
     Start-Sleep -Seconds $HEALTH_INTERVAL_SEC
     $elapsed += $HEALTH_INTERVAL_SEC
     try {
-        $resp = Invoke-WebRequest "http://${VM_TEMP_IP}:${APP_PORT}/health" `
+        $resp = Invoke-WebRequest "http://${VM_STATIC_IP}:${APP_PORT}/health" `
                                   -UseBasicParsing -TimeoutSec 5
         if ($resp.StatusCode -eq 200) {
             $healthy = $true
@@ -292,7 +292,7 @@ Write-Host "  /health → $($healthBody.status) (version: $($healthBody.version)
 
 # GET /auth/login → must not be 5xx
 try {
-    $loginResp = Invoke-WebRequest "http://${VM_TEMP_IP}:${APP_PORT}/auth/login" `
+    $loginResp = Invoke-WebRequest "http://${VM_STATIC_IP}:${APP_PORT}/auth/login" `
                                    -UseBasicParsing -TimeoutSec 10 -MaximumRedirection 0
     $loginStatus = $loginResp.StatusCode
 } catch [System.Net.WebException] {
@@ -307,66 +307,9 @@ if ($loginStatus -ge 500) {
 Write-Host "  /auth/login → $loginStatus (redirect to Google is OK)"
 
 # ═══════════════════════════════════════════════════════════════════
-# PHASE 7 — Swap to static IP
+# PHASE 7 — Cleanup
 # ═══════════════════════════════════════════════════════════════════
-Write-Host "`n[Phase 7] Configuring static IP $VM_STATIC_IP" -ForegroundColor Cyan
-
-$netplanContent = @"
-network:
-  version: 2
-  ethernets:
-    eth0:
-      addresses: [$VM_STATIC_IP/$VM_NETMASK]
-      routes:
-        - to: default
-          via: $VM_GATEWAY
-      nameservers:
-        addresses: [$VM_DNS]
-"@
-
-# Escape for shell heredoc inside ssh
-$netplanEscaped = $netplanContent -replace "'", "'\''"
-
-$sshCmd = @"
-sudo tee /etc/netplan/01-static.yaml > /dev/null << 'NETPLAN'
-$netplanContent
-NETPLAN
-sudo chmod 600 /etc/netplan/01-static.yaml
-sudo netplan apply
-"@
-
-Write-Host "  SSHing to photoai@$VM_TEMP_IP to apply netplan…"
-ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 "photoai@$VM_TEMP_IP" $sshCmd
-if ($LASTEXITCODE -ne 0) {
-    Write-Warning "netplan apply may have interrupted the SSH session (this is expected)."
-}
-
-# ═══════════════════════════════════════════════════════════════════
-# PHASE 8 — Cleanup and final verification
-# ═══════════════════════════════════════════════════════════════════
-Write-Host "`n[Phase 8] Final verification and cleanup" -ForegroundColor Cyan
-
-# Give VM a moment to come back on static IP
-Start-Sleep -Seconds 15
-
-Write-Host "  Health check on static IP http://${VM_STATIC_IP}:${APP_PORT}/health…"
-$finalHealthy = $false
-$elapsed2 = 0
-do {
-    Start-Sleep -Seconds $HEALTH_INTERVAL_SEC
-    $elapsed2 += $HEALTH_INTERVAL_SEC
-    try {
-        $r = Invoke-WebRequest "http://${VM_STATIC_IP}:${APP_PORT}/health" `
-                               -UseBasicParsing -TimeoutSec 5
-        if ($r.StatusCode -eq 200) { $finalHealthy = $true; break }
-    } catch { }
-} while ($elapsed2 -lt 60)
-
-if (-not $finalHealthy) {
-    Write-Warning "Static IP health check did not pass — verify $VM_STATIC_IP manually."
-} else {
-    Write-Host "  Static IP health check passed."
-}
+Write-Host "`n[Phase 7] Cleanup" -ForegroundColor Cyan
 
 # Remove old VM
 if ($oldVM) {
