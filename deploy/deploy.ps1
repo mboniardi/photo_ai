@@ -270,11 +270,9 @@ do {
 } while ($elapsed -lt $HEALTH_TIMEOUT_SEC)
 
 if (-not $healthy) {
-    Write-Error "Health check timeout after ${HEALTH_TIMEOUT_SEC}s. Rollback: removing $VM_NAME"
-    Stop-VM -Name $VM_NAME -Force
-    Remove-VM -Name $VM_NAME -Force
-    Remove-Item $workingVhdx -Force -ErrorAction SilentlyContinue
-    Remove-Item $ciIso       -Force -ErrorAction SilentlyContinue
+    Write-Warning "Health check timeout after ${HEALTH_TIMEOUT_SEC}s."
+    Write-Warning "The VM may still be installing packages. Check http://${VM_STATIC_IP}:${APP_PORT}/health manually."
+    Write-Warning "To remove it manually: Stop-VM '$VM_NAME' -Force; Remove-VM '$VM_NAME' -Force -ErrorAction SilentlyContinue; Remove-Item '$workingVhdx' -Force"
     exit 1
 }
 
@@ -312,11 +310,14 @@ Write-Host "  /auth/login → $loginStatus (redirect to Google is OK)"
 # ═══════════════════════════════════════════════════════════════════
 Write-Host "`n[Phase 7] Cleanup" -ForegroundColor Cyan
 
-# Remove old VM
+# Remove old VM and its disk
 if ($oldVM) {
     Write-Host "  Stopping and removing old VM: $($oldVM.Name)…"
+    $oldVhdx = (Get-VMHardDiskDrive $oldVM).Path
     Stop-VM -Name $oldVM.Name -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 3
     Remove-VM -Name $oldVM.Name -Force -ErrorAction SilentlyContinue
+    if ($oldVhdx) { Remove-Item $oldVhdx -Force -ErrorAction SilentlyContinue }
     Write-Host "  Old VM removed."
 }
 
