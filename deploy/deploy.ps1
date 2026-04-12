@@ -107,9 +107,7 @@ if (-not (Test-Path $baseVhdx)) {
 # Copy and resize to working VHDX
 Write-Host "  Copying and resizing VHDX to ${VM_DISK_GB}GB…"
 Copy-Item $baseVhdx $workingVhdx
-$workingWsl = ConvertTo-WslPath $workingVhdx
-wsl qemu-img resize "$workingWsl" "${VM_DISK_GB}G"
-if ($LASTEXITCODE -ne 0) { Write-Error "qemu-img resize failed."; exit 1 }
+Resize-VHD -Path $workingVhdx -SizeBytes ($VM_DISK_GB * 1GB)
 
 # ═══════════════════════════════════════════════════════════════════
 # PHASE 3 — Cloud-Init ISO
