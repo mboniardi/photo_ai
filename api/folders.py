@@ -8,7 +8,8 @@ from database.folders import (
     get_all_folders, insert_folder, get_folder_by_path,
     update_folder, update_folder_counts, delete_folder,
 )
-from database.photos import count_photos
+from database.photos import count_photos, get_photos
+from database.queue import add_to_queue
 from services.scanner import scan_folder
 import config
 
@@ -64,7 +65,15 @@ def scan_and_add_folder(req: ScanRequest):
                             analyzed_only=True)
     update_folder_counts(config.LOCAL_DB, req.folder_path,
                          photo_count=total, analyzed_count=analyzed)
-    return {"new": result.new, "skipped": result.skipped, "errors": result.errors}
+    queued = 0
+    if req.auto_analyze:
+        unanalyzed = get_photos(config.LOCAL_DB, folder_path=req.folder_path,
+                                analyzed_only=False, limit=10000)
+        for photo in unanalyzed:
+            add_to_queue(config.LOCAL_DB, photo_id=photo["id"], priority=5)
+        queued = len(unanalyzed)
+    return {"new": result.new, "skipped": result.skipped, "errors": result.errors,
+            "queued": queued}
 
 
 @router.post("/rescan")

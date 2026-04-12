@@ -139,6 +139,8 @@
     .folder-action-btn:hover { color: var(--text); background: var(--subtle); }
 
     /* QUEUE PANEL */
+    .toast-enter-active, .toast-leave-active { transition: opacity 0.3s, transform 0.3s; }
+    .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateX(-50%) translateY(12px); }
     .queue-panel { border-top: 1px solid var(--border); }
     .queue-header {
       display: flex; align-items: center; padding: 8px 16px; cursor: pointer;
@@ -1071,6 +1073,17 @@
     </div>
   </transition>
 
+  <!-- ─── TOAST ─── -->
+  <transition name="toast">
+    <div v-if="toast" :style="{
+      position:'fixed', bottom:'24px', left:'50%', transform:'translateX(-50%)',
+      background: toast.type==='success' ? 'var(--green)' : 'var(--amber)',
+      color:'#000', padding:'10px 20px', borderRadius:'8px',
+      fontSize:'0.85rem', fontWeight:'600', zIndex:9999, whiteSpace:'nowrap',
+      boxShadow:'0 4px 16px rgba(0,0,0,0.4)'
+    }">{{ toast.msg }}</div>
+  </transition>
+
 </div><!-- #app -->
 
 <script>
@@ -1098,6 +1111,15 @@ const apiDelete = (url, data) => apiFetch(url, { method: 'DELETE', body: data ? 
 /* ─── APP ─── */
 createApp({
   setup() {
+
+    /* TOAST */
+    const toast = ref(null);
+    let toastTimer = null;
+    function showToast(msg, type = 'info') {
+      if (toastTimer) clearTimeout(toastTimer);
+      toast.value = { msg, type };
+      toastTimer = setTimeout(() => { toast.value = null; }, 4000);
+    }
 
     /* USER */
     const user = ref(null);
@@ -1488,7 +1510,7 @@ createApp({
     /* ADD FOLDER MODAL */
     const showAddFolder = ref(false);
     const addFolderLoading = ref(false);
-    const addFolderForm = reactive({ folder_path: '', display_name: '', default_location_name: '', auto_analyze: false });
+    const addFolderForm = reactive({ folder_path: '', display_name: '', default_location_name: '', auto_analyze: true });
 
     const browserCurrentPath = ref('/');
     const browserDirs = ref([]);
@@ -1547,6 +1569,10 @@ createApp({
         showAddFolder.value = false;
         await loadFolders();
         loadPhotos(true);
+        fetchQueueStatus();
+        const parts = [`${result.new} new photo${result.new !== 1 ? 's' : ''} found`];
+        if (result.queued > 0) parts.push(`${result.queued} queued for AI analysis`);
+        showToast(parts.join(' · '), 'success');
       }
     }
 
@@ -1647,6 +1673,7 @@ createApp({
     });
 
     return {
+      toast, showToast,
       user, userInitial,
       folders, selectedFolder, totalPhotos, folderName,
       selectFolder, rescanFolder, deleteFolder,
