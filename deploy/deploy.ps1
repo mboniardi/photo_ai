@@ -64,10 +64,10 @@ Get-VM | ForEach-Object {
     }
 }
 
-# Generate unique VM name, secret key, and temporary console password
-$VM_NAME        = "$VM_NAME_PREFIX-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-$SECRET_KEY     = -join ((0..31) | ForEach-Object { '{0:x2}' -f (Get-Random -Max 256) })
-$CONSOLE_PASSWD = -join ((1..16) | ForEach-Object { [char](Get-Random -Min 65 -Max 91) })
+# Generate unique VM name and secret key
+$VM_NAME    = "$VM_NAME_PREFIX-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+$SECRET_KEY = -join ((0..31) | ForEach-Object { '{0:x2}' -f (Get-Random -Max 256) })
+if (-not $CONSOLE_PASSWD) { Write-Error "CONSOLE_PASSWD not set in deploy.config.ps1"; exit 1 }
 Write-Host "  New VM name: $VM_NAME"
 
 # ═══════════════════════════════════════════════════════════════════

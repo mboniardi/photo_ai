@@ -33,6 +33,9 @@ $GOOGLE_CLIENT_SECRET = "CHANGE_ME"
 $GEMINI_API_KEY       = "CHANGE_ME"
 $AUTHORIZED_EMAILS    = @("your@gmail.com")
 
+# ── VM console password (for SSH/console access during testing) ──
+$CONSOLE_PASSWD       = "CHANGE_ME"
+
 # ── Health check ────────────────────────────────────────────────
 $HEALTH_TIMEOUT_SEC   = 900
 $HEALTH_INTERVAL_SEC  = 10
