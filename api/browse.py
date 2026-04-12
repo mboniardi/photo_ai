@@ -1,7 +1,13 @@
 import os
 from fastapi import APIRouter, HTTPException
+import config
 
 router = APIRouter(prefix="/api/browse", tags=["browse"])
+
+
+@router.get("/root")
+def browse_root():
+    return {"path": config.PHOTOS_PATH}
 
 
 @router.get("")

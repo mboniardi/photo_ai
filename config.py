@@ -14,6 +14,9 @@ APP_PORT: int = int(os.environ.get("APP_PORT", 8080))
 # ── Path dati ─────────────────────────────────────────────────────
 APP_DATA_PATH: str = os.environ.get("APP_DATA_PATH", "/mnt/nas/photo_ai_data")
 
+# Root da cui parte il folder browser nell'UI
+PHOTOS_PATH: str = os.environ.get("PHOTOS_PATH", "/mnt/nas")
+
 # DB locale sulla VM (SSD virtuale) — usato durante l'esecuzione
 LOCAL_DB: str = os.environ.get("LOCAL_DB", "/opt/photo_ai/data/photo_ai.db")
 

@@ -1494,6 +1494,7 @@ createApp({
     const browserDirs = ref([]);
     const browserLoading = ref(false);
     const browserError = ref('');
+    const browserRoot = ref('/');
 
     const browserBreadcrumbs = computed(() => {
       const p = browserCurrentPath.value;
@@ -1528,7 +1529,7 @@ createApp({
     function openAddFolder() {
       Object.assign(addFolderForm, { folder_path: '', display_name: '', default_location_name: '', auto_analyze: false });
       showAddFolder.value = true;
-      browseTo('/');
+      browseTo(browserRoot.value);
     }
 
     async function submitAddFolder() {
@@ -1629,6 +1630,9 @@ createApp({
       if (!me) return;
       user.value = me;
 
+      const rootData = await apiGet('/api/browse/root');
+      if (rootData?.path) browserRoot.value = rootData.path;
+
       await loadFolders();
       await loadPhotos(true);
       await fetchQueueStatus();
@@ -1660,7 +1664,7 @@ createApp({
       scoreClass, scoreColor, qualityLabel, qualityClass,
       formatBytes, formatDate, descSnippet,
       showAddFolder, addFolderLoading, addFolderForm, openAddFolder, submitAddFolder,
-      browserCurrentPath, browserDirs, browserLoading, browserError, browserBreadcrumbs, browseTo, selectBrowserPath,
+      browserRoot, browserCurrentPath, browserDirs, browserLoading, browserError, browserBreadcrumbs, browseTo, selectBrowserPath,
       showSettingsModal, savingSettings, testingAi, testResult, settingsForm,
       openSettings, saveSettings, testAiConnection,
     };

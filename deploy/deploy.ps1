@@ -177,6 +177,7 @@ write_files:
       AUTHORIZED_EMAILS_PATH=/opt/photo_ai/data/authorized_emails.txt
       APP_DATA_PATH=/mnt/nas/photo_ai_data
       LOCAL_DB=/opt/photo_ai/data/photo_ai.db
+      PHOTOS_PATH=/mnt/nas/$NAS_PHOTOS_SUBDIR
       NAS_CIFS_USER=$NAS_USER
       NAS_CIFS_PASSWORD=$NAS_PASSWORD
       APP_PORT=$APP_PORT
