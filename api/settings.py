@@ -1,6 +1,6 @@
 """Route /api/settings — lettura e aggiornamento impostazioni app."""
 from fastapi import APIRouter, HTTPException
-from database.settings import get_all_settings, set_setting
+from database.settings import get_all_settings, get_setting, set_setting
 import config
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -22,6 +22,30 @@ ALLOWED_KEYS = {
 def get_settings():
     """Ritorna tutte le impostazioni come dizionario."""
     return get_all_settings(config.LOCAL_DB)
+
+
+@router.post("/test-ai")
+def test_ai_connection():
+    """Verifica la connessione al backend AI configurato."""
+    engine_name = get_setting(config.LOCAL_DB, "ai_engine") or "gemini"
+    try:
+        if engine_name == "gemini":
+            import google.generativeai as genai
+            api_key = get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
+            if not api_key:
+                raise ValueError("GEMINI_API_KEY non configurata")
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            model.generate_content("ping")
+            return {"ok": True, "message": f"Gemini ({engine_name}) connesso correttamente"}
+        else:
+            import httpx
+            base_url = get_setting(config.LOCAL_DB, "ollama_base_url") or "http://localhost:11434"
+            r = httpx.get(f"{base_url}/api/tags", timeout=5)
+            r.raise_for_status()
+            return {"ok": True, "message": f"Ollama raggiungibile su {base_url}"}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
 
 
 @router.put("")
