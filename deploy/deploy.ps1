@@ -230,18 +230,19 @@ Write-Host "`n[Phase 5] Starting VM and waiting for health check" -ForegroundCol
 Start-VM -Name $VM_NAME
 Write-Host "  VM started. Waiting for IP assignment…"
 
-# Wait for DHCP IP
+# Wait for DHCP IP (Ubuntu first-boot with cloud-init can take several minutes)
 $VM_TEMP_IP = $null
 $ipWait = 0
-while (-not $VM_TEMP_IP -and $ipWait -lt 120) {
-    Start-Sleep -Seconds 5
-    $ipWait += 5
+while (-not $VM_TEMP_IP -and $ipWait -lt 300) {
+    Start-Sleep -Seconds 10
+    $ipWait += 10
     $VM_TEMP_IP = (Get-VMNetworkAdapter $vm | Select-Object -ExpandProperty IPAddresses |
                    Where-Object { $_ -match '^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$' } |
                    Select-Object -First 1)
+    Write-Host "  [${ipWait}s] Waiting for DHCP IP…" -ForegroundColor DarkGray
 }
 if (-not $VM_TEMP_IP) {
-    Write-Error "Could not get VM IP via DHCP after 120 seconds."
+    Write-Error "Could not get VM IP via DHCP after 300 seconds. Check Hyper-V switch with: Get-VMSwitch"
     Stop-VM -Name $VM_NAME -Force
     Remove-VM -Name $VM_NAME -Force
     exit 1
