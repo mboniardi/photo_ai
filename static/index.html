@@ -951,11 +951,37 @@
   <!-- ─── ADD FOLDER MODAL ─── -->
   <transition name="fade">
     <div v-if="showAddFolder" class="modal-overlay" @click.self="showAddFolder = false">
-      <div class="modal">
+      <div class="modal" style="max-width:560px">
         <div class="modal-title">Add folder</div>
         <div class="form-group">
           <label class="form-label">Folder path *</label>
-          <input class="form-input" v-model="addFolderForm.folder_path" placeholder="/path/to/photos" />
+          <div style="padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:0.9rem;color:var(--text);" :style="!addFolderForm.folder_path && {color:'var(--muted)'}">
+            {{ addFolderForm.folder_path || 'No folder selected' }}
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:8px;">
+            <div style="font-size:0.78rem;color:var(--muted);margin-bottom:6px;display:flex;flex-wrap:wrap;gap:2px;align-items:center;">
+              <template v-for="(seg, idx) in browserBreadcrumbs" :key="idx">
+                <span @click="browseTo(seg.path)" style="cursor:pointer;" :style="{color: idx===browserBreadcrumbs.length-1 ? 'var(--text)' : 'var(--muted)'}"
+                  @mouseover="$event.target.style.color='var(--amber)'" @mouseout="$event.target.style.color=idx===browserBreadcrumbs.length-1?'var(--text)':'var(--muted)'">{{ seg.label }}</span>
+                <span v-if="idx < browserBreadcrumbs.length-1" style="color:var(--muted);user-select:none"> / </span>
+              </template>
+            </div>
+            <div style="max-height:220px;overflow-y:auto;">
+              <div v-if="browserLoading" style="color:var(--muted);font-size:0.85rem;padding:6px 8px;">Loading…</div>
+              <div v-else-if="browserError" style="color:#e57373;font-size:0.85rem;padding:6px 8px;">{{ browserError }}</div>
+              <template v-else>
+                <div v-if="browserDirs.length === 0" style="color:var(--muted);font-size:0.85rem;padding:6px 8px;">No subfolders</div>
+                <div v-for="dir in browserDirs" :key="dir.path" @click="browseTo(dir.path)"
+                  style="padding:6px 8px;cursor:pointer;border-radius:4px;font-size:0.85rem;display:flex;align-items:center;gap:6px;"
+                  @mouseover="$event.currentTarget.style.background='var(--border)'" @mouseout="$event.currentTarget.style.background='transparent'">
+                  <span>📁</span><span>{{ dir.name }}</span>
+                </div>
+              </template>
+            </div>
+            <button class="btn-secondary" style="width:100%;margin-top:8px;" @click="selectBrowserPath">Select this folder</button>
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">Display name</label>
@@ -1462,9 +1488,45 @@ createApp({
     const addFolderLoading = ref(false);
     const addFolderForm = reactive({ folder_path: '', display_name: '', default_location_name: '', auto_analyze: false });
 
+    const browserCurrentPath = ref('/');
+    const browserDirs = ref([]);
+    const browserLoading = ref(false);
+    const browserError = ref('');
+
+    const browserBreadcrumbs = computed(() => {
+      const p = browserCurrentPath.value;
+      if (p === '/') return [{ label: '/', path: '/' }];
+      const parts = p.split('/').filter(s => s.length > 0);
+      const segs = [{ label: '/', path: '/' }];
+      let built = '';
+      for (const part of parts) {
+        built += '/' + part;
+        segs.push({ label: part, path: built });
+      }
+      return segs;
+    });
+
+    async function browseTo(path) {
+      browserLoading.value = true;
+      browserError.value = '';
+      const data = await apiGet('/api/browse?path=' + encodeURIComponent(path));
+      browserLoading.value = false;
+      if (data === null) {
+        browserError.value = 'Could not load directory.';
+        return;
+      }
+      browserCurrentPath.value = data.path;
+      browserDirs.value = data.dirs || [];
+    }
+
+    function selectBrowserPath() {
+      addFolderForm.folder_path = browserCurrentPath.value;
+    }
+
     function openAddFolder() {
       Object.assign(addFolderForm, { folder_path: '', display_name: '', default_location_name: '', auto_analyze: false });
       showAddFolder.value = true;
+      browseTo('/');
     }
 
     async function submitAddFolder() {
@@ -1596,6 +1658,7 @@ createApp({
       scoreClass, scoreColor, qualityLabel, qualityClass,
       formatBytes, formatDate, descSnippet,
       showAddFolder, addFolderLoading, addFolderForm, openAddFolder, submitAddFolder,
+      browserCurrentPath, browserDirs, browserLoading, browserError, browserBreadcrumbs, browseTo, selectBrowserPath,
       showSettingsModal, savingSettings, testingAi, testResult, settingsForm,
       openSettings, saveSettings, testAiConnection,
     };
