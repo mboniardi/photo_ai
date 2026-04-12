@@ -26,11 +26,11 @@ if (-not (Test-Path $configPath)) {
 }
 . $configPath
 
-# Check Hyper-V (Get-WindowsOptionalFeature on Windows 10/11; Get-WindowsFeature on Server)
+# Check Hyper-V via vmms service (fast — works on Windows 10/11 and Server)
 Write-Host "  Checking Hyper-V…"
-$hvFeature = Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -ErrorAction SilentlyContinue
-if ($hvFeature -and $hvFeature.State -ne "Enabled") {
-    Write-Error "Hyper-V is not enabled. Run: Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All"
+$vmms = Get-Service -Name vmms -ErrorAction SilentlyContinue
+if (-not $vmms) {
+    Write-Error "Hyper-V is not enabled. Run as Admin: Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All"
     exit 1
 }
 
