@@ -4,7 +4,6 @@ Avvia il server con:
   uvicorn main:app --host 0.0.0.0 --port 8080
 """
 import logging
-import signal
 import time
 from pathlib import Path
 
@@ -127,11 +126,7 @@ async def on_startup():
     except Exception as exc:
         logger.warning("APScheduler non avviato: %s", exc)
 
-    # 7. Backup al SIGTERM
-    def _on_sigterm(signum, frame):
-        backup_db_to_nas()
-        raise SystemExit(0)
-    signal.signal(signal.SIGTERM, _on_sigterm)
+    # 7. SIGTERM handled by uvicorn — on_shutdown below does the backup
 
 
 @app.on_event("shutdown")

@@ -89,7 +89,7 @@ echo "[6/6] Installing systemd service…"
 cat > "$SERVICE_FILE" <<'UNIT'
 [Unit]
 Description=Photo AI Manager
-After=network.target
+After=network.target remote-fs.target
 Wants=network.target
 
 [Service]
@@ -100,6 +100,7 @@ EnvironmentFile=/opt/photo_ai/.env
 ExecStart=/opt/photo_ai/venv/bin/uvicorn main:app --host 0.0.0.0 --port $APP_PORT
 Restart=on-failure
 RestartSec=5
+TimeoutStopSec=20
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=photo_ai
