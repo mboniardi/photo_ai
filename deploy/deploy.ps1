@@ -26,11 +26,11 @@ if (-not (Test-Path $configPath)) {
 }
 . $configPath
 
-# Check Hyper-V
+# Check Hyper-V (Get-WindowsOptionalFeature on Windows 10/11; Get-WindowsFeature on Server)
 Write-Host "  Checking Hyper-V…"
-$hvFeature = Get-WindowsFeature -Name Hyper-V -ErrorAction SilentlyContinue
-if ($hvFeature -and $hvFeature.InstallState -ne "Installed") {
-    Write-Error "Hyper-V is not installed. Enable it via 'Turn Windows features on or off'."
+$hvFeature = Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -ErrorAction SilentlyContinue
+if ($hvFeature -and $hvFeature.State -ne "Enabled") {
+    Write-Error "Hyper-V is not enabled. Run: Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All"
     exit 1
 }
 
