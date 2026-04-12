@@ -64,9 +64,10 @@ Get-VM | ForEach-Object {
     }
 }
 
-# Generate unique VM name and secret key
-$VM_NAME   = "$VM_NAME_PREFIX-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-$SECRET_KEY = -join ((0..31) | ForEach-Object { '{0:x2}' -f (Get-Random -Max 256) })
+# Generate unique VM name, secret key, and temporary console password
+$VM_NAME        = "$VM_NAME_PREFIX-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+$SECRET_KEY     = -join ((0..31) | ForEach-Object { '{0:x2}' -f (Get-Random -Max 256) })
+$CONSOLE_PASSWD = -join ((1..16) | ForEach-Object { [char](Get-Random -Min 65 -Max 91) })
 Write-Host "  New VM name: $VM_NAME"
 
 # ═══════════════════════════════════════════════════════════════════
@@ -139,7 +140,8 @@ users:
   - name: photoai
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
-    lock_passwd: true
+    lock_passwd: false
+    plain_text_passwd: $CONSOLE_PASSWD
     ssh_authorized_keys: []
 
 package_update: true
@@ -381,4 +383,5 @@ Write-Host "================================================================" -F
 Write-Host " Deploy complete!" -ForegroundColor Green
 Write-Host " VM:  $VM_NAME" -ForegroundColor Green
 Write-Host " URL: http://${VM_STATIC_IP}:${APP_PORT}" -ForegroundColor Green
+Write-Host " Console login: user=photoai  password=$CONSOLE_PASSWD" -ForegroundColor Green
 Write-Host "================================================================" -ForegroundColor Green
