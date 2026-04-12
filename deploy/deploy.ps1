@@ -161,6 +161,10 @@ write_files:
             nameservers:
               addresses: [$VM_DNS]
 
+  - path: /etc/apt/apt.conf.d/99force-ipv4
+    content: |
+      Acquire::ForceIPv4 "true";
+
   - path: /opt/photo_ai/.env
     permissions: '0600'
     owner: root:root
@@ -190,9 +194,8 @@ packages:
 
 runcmd:
   - netplan apply
-  - mkdir -p /opt/photo_ai
+  - rm -rf /opt/photo_ai
   - git clone $APP_GIT_REPO -b $APP_GIT_BRANCH /opt/photo_ai
-  - cp /opt/photo_ai/.env /opt/photo_ai/.env.bak || true
   - bash /opt/photo_ai/install.sh
   - mkdir -p /mnt/nas/photo_ai_data
   - "printf '$authorizedEmailsWriteFile\n' > /mnt/nas/photo_ai_data/authorized_emails.txt || true"
