@@ -13,6 +13,12 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+function ConvertTo-WslPath([string]$winPath) {
+    $drive = $winPath[0].ToString().ToLower()
+    $rest  = $winPath.Substring(2) -replace '\\', '/'
+    return "/mnt/$drive$rest"
+}
+
 # ═══════════════════════════════════════════════════════════════════
 # PHASE 1 — Preparation
 # ═══════════════════════════════════════════════════════════════════
@@ -90,8 +96,8 @@ if (-not (Test-Path $imgFile)) {
 # Convert .img (qcow2) → .vhdx via WSL2 qemu-img
 if (-not (Test-Path $baseVhdx)) {
     Write-Host "  Converting to VHDX (this may take a few minutes)…"
-    $imgWsl  = wsl wslpath -u "$imgFile"
-    $baseWsl = wsl wslpath -u "$baseVhdx"
+    $imgWsl  = ConvertTo-WslPath $imgFile
+    $baseWsl = ConvertTo-WslPath $baseVhdx
     wsl qemu-img convert -f qcow2 -O vhdx "$imgWsl" "$baseWsl"
     if ($LASTEXITCODE -ne 0) { Write-Error "qemu-img convert failed."; exit 1 }
 } else {
@@ -101,7 +107,7 @@ if (-not (Test-Path $baseVhdx)) {
 # Copy and resize to working VHDX
 Write-Host "  Copying and resizing VHDX to ${VM_DISK_GB}GB…"
 Copy-Item $baseVhdx $workingVhdx
-$workingWsl = wsl wslpath -u "$workingVhdx"
+$workingWsl = ConvertTo-WslPath $workingVhdx
 wsl qemu-img resize "$workingWsl" "${VM_DISK_GB}G"
 if ($LASTEXITCODE -ne 0) { Write-Error "qemu-img resize failed."; exit 1 }
 
@@ -182,8 +188,8 @@ if (Test-Path $oscdimg) {
     if ($LASTEXITCODE -ne 0) { Write-Error "oscdimg failed."; exit 1 }
 } else {
     Write-Host "  oscdimg not found — using WSL2 mkisofs…"
-    $ciDirWsl = wsl wslpath -u "$ciDir"
-    $ciIsoWsl = wsl wslpath -u "$ciIso"
+    $ciDirWsl = ConvertTo-WslPath $ciDir
+    $ciIsoWsl = ConvertTo-WslPath $ciIso
     wsl mkisofs -output "$ciIsoWsl" -volid cidata -joliet -rational-rock "$ciDirWsl"
     if ($LASTEXITCODE -ne 0) {
         Write-Error "mkisofs failed. Install 'genisoimage' in WSL2: sudo apt-get install -y genisoimage"
