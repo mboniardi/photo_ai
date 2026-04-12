@@ -439,6 +439,10 @@
     .form-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; user-select: none; }
     .form-toggle input { accent-color: var(--amber); cursor: pointer; }
     .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+    .breadcrumb-seg { cursor: pointer; }
+    .breadcrumb-seg:hover { color: var(--amber); }
+    .browser-dir-row { padding: 6px 8px; cursor: pointer; border-radius: 4px; }
+    .browser-dir-row:hover { background: var(--border); }
     .btn-primary {
       padding: 8px 20px; background: var(--amber); border: none; border-radius: var(--radius);
       color: #000; font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit;
@@ -955,7 +959,7 @@
         <div class="modal-title">Add folder</div>
         <div class="form-group">
           <label class="form-label">Folder path *</label>
-          <div style="padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:0.9rem;color:var(--text);" :style="!addFolderForm.folder_path && {color:'var(--muted)'}">
+          <div class="form-input" :style="!addFolderForm.folder_path && {color:'var(--muted)'}">
             {{ addFolderForm.folder_path || 'No folder selected' }}
           </div>
         </div>
@@ -963,8 +967,7 @@
           <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:8px;">
             <div style="font-size:0.78rem;color:var(--muted);margin-bottom:6px;display:flex;flex-wrap:wrap;gap:2px;align-items:center;">
               <template v-for="(seg, idx) in browserBreadcrumbs" :key="idx">
-                <span @click="browseTo(seg.path)" style="cursor:pointer;" :style="{color: idx===browserBreadcrumbs.length-1 ? 'var(--text)' : 'var(--muted)'}"
-                  @mouseover="$event.target.style.color='var(--amber)'" @mouseout="$event.target.style.color=idx===browserBreadcrumbs.length-1?'var(--text)':'var(--muted)'">{{ seg.label }}</span>
+                <span class="breadcrumb-seg" @click="browseTo(seg.path)" :style="{color: idx===browserBreadcrumbs.length-1 ? 'var(--text)' : 'var(--muted)'}">{{ seg.label }}</span>
                 <span v-if="idx < browserBreadcrumbs.length-1" style="color:var(--muted);user-select:none"> / </span>
               </template>
             </div>
@@ -973,9 +976,8 @@
               <div v-else-if="browserError" style="color:#e57373;font-size:0.85rem;padding:6px 8px;">{{ browserError }}</div>
               <template v-else>
                 <div v-if="browserDirs.length === 0" style="color:var(--muted);font-size:0.85rem;padding:6px 8px;">No subfolders</div>
-                <div v-for="dir in browserDirs" :key="dir.path" @click="browseTo(dir.path)"
-                  style="padding:6px 8px;cursor:pointer;border-radius:4px;font-size:0.85rem;display:flex;align-items:center;gap:6px;"
-                  @mouseover="$event.currentTarget.style.background='var(--border)'" @mouseout="$event.currentTarget.style.background='transparent'">
+                <div class="browser-dir-row" v-for="dir in browserDirs" :key="dir.path" @click="browseTo(dir.path)"
+                  style="font-size:0.85rem;display:flex;align-items:center;gap:6px;">
                   <span>📁</span><span>{{ dir.name }}</span>
                 </div>
               </template>
