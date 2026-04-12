@@ -135,6 +135,7 @@ $authorizedEmailsWriteFile = ($AUTHORIZED_EMAILS | ForEach-Object { $_ }) -join 
 hostname: photoai
 locale: it_IT.UTF-8
 timezone: Europe/Rome
+ssh_pwauth: true
 
 users:
   - name: photoai
