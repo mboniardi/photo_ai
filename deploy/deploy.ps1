@@ -165,9 +165,8 @@ write_files:
     content: |
       Acquire::ForceIPv4 "true";
 
-  - path: /opt/photo_ai/.env
+  - path: /tmp/photo_ai.env
     permissions: '0600'
-    owner: root:root
     content: |
       GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
       GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET
@@ -192,6 +191,7 @@ runcmd:
   - apt-get update -y
   - rm -rf /opt/photo_ai
   - git clone $APP_GIT_REPO -b $APP_GIT_BRANCH /opt/photo_ai
+  - mv /tmp/photo_ai.env /opt/photo_ai/.env
   - bash /opt/photo_ai/install.sh
   - mkdir -p /mnt/nas/photo_ai_data
   - "printf '$authorizedEmailsWriteFile\n' > /mnt/nas/photo_ai_data/authorized_emails.txt || true"
