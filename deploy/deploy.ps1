@@ -230,8 +230,8 @@ Set-VMProcessor $vm -Count $VM_CPU_COUNT
 Add-VMHardDiskDrive $vm -Path $workingVhdx
 Add-VMDvdDrive $vm -Path $ciIso
 
-# Secure boot with UEFI CA (required for Ubuntu Gen2)
-Set-VMFirmware $vm -SecureBootTemplate MicrosoftUEFICertificateAuthority
+# Disable Secure Boot (MicrosoftUEFICertificateAuthority not available on all hosts)
+Set-VMFirmware $vm -EnableSecureBoot Off
 
 # Set boot order: DVD first so cloud-init ISO is read on first boot
 $bootDvd  = Get-VMDvdDrive $vm
