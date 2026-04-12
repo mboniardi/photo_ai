@@ -144,22 +144,25 @@ users:
     plain_text_passwd: $CONSOLE_PASSWD
     ssh_authorized_keys: []
 
-# Static IP configured from first boot — no DHCP phase needed
-write_files:
-  - path: /etc/netplan/01-static.yaml
-    permissions: '0600'
-    content: |
-      network:
-        version: 2
-        ethernets:
-          eth0:
-            addresses: [$VM_STATIC_IP/$VM_NETMASK]
-            routes:
-              - to: default
-                via: $VM_GATEWAY
-            nameservers:
-              addresses: [$VM_DNS]
+# bootcmd runs before package installation — apply static IP + DNS first
+bootcmd:
+  - |
+    cat > /etc/netplan/01-static.yaml << 'NETPLAN'
+    network:
+      version: 2
+      ethernets:
+        eth0:
+          addresses: [$VM_STATIC_IP/$VM_NETMASK]
+          routes:
+            - to: default
+              via: $VM_GATEWAY
+          nameservers:
+            addresses: [$VM_DNS]
+    NETPLAN
+    chmod 600 /etc/netplan/01-static.yaml
+    netplan apply || true
 
+write_files:
   - path: /etc/apt/apt.conf.d/99force-ipv4
     content: |
       Acquire::ForceIPv4 "true";
@@ -192,7 +195,6 @@ packages:
   - cifs-utils
 
 runcmd:
-  - netplan apply
   - add-apt-repository universe -y
   - apt-get update -y
   - mkdir -p /mnt/nas
