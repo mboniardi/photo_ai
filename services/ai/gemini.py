@@ -17,7 +17,7 @@ _REQUIRED_FIELDS = {
     "luogo_riconosciuto", "luogo_lat", "luogo_lon",
 }
 
-_VISION_MODEL   = "gemini-1.5-flash-latest"
+_VISION_MODEL   = "gemini-2.0-flash"
 _EMBED_MODEL    = "models/text-embedding-004"
 
 

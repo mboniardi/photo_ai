@@ -38,7 +38,7 @@ def test_ai_connection():
             if not api_key:
                 raise ValueError("GEMINI_API_KEY non configurata")
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash-latest")
+            model = genai.GenerativeModel("gemini-2.0-flash")
             model.generate_content("ping")
             return {"ok": True, "message": f"Gemini ({engine_name}) connesso correttamente"}
         else:
