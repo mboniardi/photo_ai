@@ -59,6 +59,8 @@ class GeminiEngine(AIEngine):
         )
 
     async def embed(self, text: str) -> list:
+        if not config.GEMINI_EMBED_MODEL:
+            return []
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(
             None,
