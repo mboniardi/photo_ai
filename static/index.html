@@ -1166,6 +1166,10 @@
               {{ takeoutImporting ? 'Importando…' : '📍 Importa coordinate' }}
             </button>
           </div>
+          <label style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:12px; cursor:pointer">
+            <input type="checkbox" v-model="takeoutForce" />
+            Forza aggiornamento (sovrascrive coordinate già presenti)
+          </label>
           <!-- Progress upload -->
           <div v-if="takeoutUploading" style="margin-top:8px">
             <div style="font-size:12px; color:var(--muted)">
@@ -1730,6 +1734,7 @@ createApp({
     const takeoutJsonCount = ref(0);
     const takeoutImportResult = ref(null);
     const takeoutUploadProgress = reactive({ done: 0, total: 0 });
+    const takeoutForce = ref(true);
 
     async function fetchTakeoutStatus() {
       const data = await apiGet('/api/takeout/status');
@@ -1763,7 +1768,7 @@ createApp({
     async function runTakeoutImport() {
       takeoutImporting.value = true;
       takeoutImportResult.value = null;
-      const data = await apiPost('/api/takeout/import', {});
+      const data = await apiPost('/api/takeout/import', { force: takeoutForce.value });
       takeoutImporting.value = false;
       if (data) {
         takeoutImportResult.value = data;
@@ -1954,7 +1959,7 @@ createApp({
       browserRoot, browserCurrentPath, browserDirs, browserLoading, browserError, browserBreadcrumbs, browseTo, selectBrowserPath,
       showSettingsModal, savingSettings, testingAi, testResult, settingsForm,
       purgingTrash, purgeResult, purgeTrash,
-      takeoutUploading, takeoutImporting, takeoutJsonCount, takeoutImportResult, takeoutUploadProgress,
+      takeoutUploading, takeoutImporting, takeoutJsonCount, takeoutImportResult, takeoutUploadProgress, takeoutForce,
       onTakeoutFilesSelected, runTakeoutImport,
       openSettings, saveSettings, testAiConnection,
     };

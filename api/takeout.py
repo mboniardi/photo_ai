@@ -50,11 +50,15 @@ async def upload_takeout_jsons(files: List[UploadFile] = File(...)):
     return {"saved": saved, "skipped": skipped}
 
 
+class ImportRequest(BaseModel):
+    force: bool = False
+
+
 @router.post("/import")
-def import_takeout_coords():
+def import_takeout_coords(req: ImportRequest = ImportRequest()):
     """
-    Legge i JSON di Takeout salvati e aggiorna latitude/longitude nel DB
-    per le foto che non hanno ancora coordinate.
+    Legge i JSON di Takeout salvati e aggiorna latitude/longitude nel DB.
+    Con force=True sovrascrive anche le foto che hanno già coordinate.
     Abbina per nome file (title nel JSON).
     """
     if not os.path.isdir(config.TAKEOUT_JSON_PATH):
@@ -96,7 +100,7 @@ def import_takeout_coords():
                 continue
 
             photo_id, existing_lat = db_index[title]
-            if existing_lat is not None:
+            if existing_lat is not None and not req.force:
                 skipped_already_has += 1
                 continue
 
