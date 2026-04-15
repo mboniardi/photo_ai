@@ -8,6 +8,7 @@ Worker asincrono per la coda di analisi AI (§6.5).
 import asyncio
 import json
 import logging
+import re
 import time
 from datetime import datetime
 from typing import Optional
@@ -164,8 +165,11 @@ class QueueWorker:
             else:
                 update_queue_status(self._db_path, qid, "pending")
                 if "503" in str(e) or "429" in str(e):
-                    logger.info("Errore temporaneo API — pausa coda 60s (qid=%s)", qid)
-                    self._transient_pause_until = time.monotonic() + 60
+                    # Prova a leggere il retry delay suggerito dall'API, altrimenti 120s
+                    m = re.search(r'retry[^\d]*(\d+(?:\.\d+)?)\s*s', str(e), re.IGNORECASE)
+                    delay = max(120, float(m.group(1)) + 5) if m else 120
+                    logger.info("Errore temporaneo API — pausa coda %.0fs (qid=%s)", delay, qid)
+                    self._transient_pause_until = time.monotonic() + delay
 
         finally:
             self.current_photo_name = None
