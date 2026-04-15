@@ -108,13 +108,19 @@ class QueueWorker:
             analysis = await self._engine.analyze(image_bytes, location_hint)
 
             # Embedding: testo = descrizione + soggetto + atmosfera + luogo
+            # Non bloccante: se il modello embedding non è disponibile
+            # la foto viene comunque analizzata con descrizione e punteggi.
             embed_text = " ".join(filter(None, [
                 analysis.description,
                 analysis.subject,
                 analysis.atmosphere,
                 analysis.location_name or photo["location_name"],
             ]))
-            embedding = await self._engine.embed(embed_text)
+            try:
+                embedding = await self._engine.embed(embed_text)
+            except Exception as emb_exc:
+                logger.warning("Embedding non disponibile per photo_id=%s: %s", photo_id, emb_exc)
+                embedding = []
 
             # Aggiorna la foto nel DB
             update_photo(

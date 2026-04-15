@@ -26,7 +26,7 @@ REMOTE_DB: str = f"{APP_DATA_PATH}/photo_ai.db"
 # ── Secrets / credenziali (nessun default: devono venire dall'env) ─
 GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-GEMINI_EMBED_MODEL: str = os.environ.get("GEMINI_EMBED_MODEL", "text-embedding-004")
+GEMINI_EMBED_MODEL: str = os.environ.get("GEMINI_EMBED_MODEL", "gemini-embedding-exp-03-07")
 GOOGLE_CLIENT_ID: str = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET: str = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 SECRET_KEY: str = os.environ.get("SECRET_KEY", "")
