@@ -126,11 +126,42 @@ async def on_startup():
     except Exception as exc:
         logger.warning("APScheduler non avviato: %s", exc)
 
-    # 7. SIGTERM handled by uvicorn — on_shutdown below does the backup
+    # 7. Avvia il QueueWorker AI
+    from services.queue_worker import QueueWorker
+    from database.settings import get_setting
+
+    engine_name = get_setting(config.LOCAL_DB, "ai_engine") or "gemini"
+    try:
+        if engine_name == "gemini":
+            from services.ai.gemini import GeminiEngine
+            api_key = get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
+            engine = GeminiEngine(api_key=api_key)
+        else:
+            from services.ai.ollama import OllamaEngine
+            base_url = get_setting(config.LOCAL_DB, "ollama_base_url") or "http://localhost:11434"
+            vision_model = get_setting(config.LOCAL_DB, "ollama_vision_model") or "llava"
+            embed_model  = get_setting(config.LOCAL_DB, "ollama_embed_model")  or "nomic-embed-text"
+            engine = OllamaEngine(base_url=base_url, vision_model=vision_model, embed_model=embed_model)
+
+        rpm = int(get_setting(config.LOCAL_DB, "analysis_rpm_limit") or config.ANALYSIS_RPM_LIMIT)
+        worker = QueueWorker(engine=engine, db_path=config.LOCAL_DB, rpm_limit=rpm)
+        await worker.start()
+        set_worker(worker)
+        app.state.worker = worker
+        print(f"QueueWorker avviato (engine={engine_name}, rpm={rpm})")
+    except Exception as exc:
+        logger.warning("QueueWorker non avviato: %s", exc)
+
+    # 8. SIGTERM handled by uvicorn — on_shutdown below does the backup
 
 
 @app.on_event("shutdown")
 async def on_shutdown():
+    if hasattr(app.state, "worker"):
+        await app.state.worker.stop()
     if hasattr(app.state, "scheduler"):
         app.state.scheduler.shutdown(wait=False)
-    backup_db_to_nas()
+    try:
+        backup_db_to_nas()
+    except Exception as exc:
+        logger.warning("Backup DB al shutdown fallito: %s", exc)

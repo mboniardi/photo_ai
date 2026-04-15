@@ -6,15 +6,21 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    """TestClient con DB temporaneo."""
+    """TestClient con DB temporaneo e API key fake per il worker."""
     db = str(tmp_path / "test.db")
     monkeypatch.setenv("LOCAL_DB", db)
+    monkeypatch.setenv("APP_DATA_PATH", str(tmp_path))
+    monkeypatch.setenv("REMOTE_DB", str(tmp_path / "remote.db"))
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-for-tests")
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-32-chars-minimum!")
     import config, importlib
     importlib.reload(config)
     from database.models import init_db
     init_db(db)
     from main import app
-    return TestClient(app)
+    # Context manager garantisce che on_startup/on_shutdown vengano eseguiti
+    with TestClient(app) as c:
+        yield c
 
 
 class TestHealthEndpoint:
@@ -52,3 +58,12 @@ class TestAllRoutersRegistered:
     def test_queue_route_exists(self, client):
         resp = client.get("/api/queue/status")
         assert resp.status_code != 404
+
+
+class TestWorkerStartup:
+    def test_worker_is_running_after_startup(self, client):
+        """Il QueueWorker deve essere avviato all'avvio dell'app."""
+        import api.queue
+        assert api.queue._worker is not None, "Worker non inizializzato — set_worker() mai chiamato"
+        assert api.queue._worker.is_running, "Worker inizializzato ma non avviato"
+
