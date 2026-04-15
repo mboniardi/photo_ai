@@ -289,6 +289,7 @@
       position: absolute; inset: 0; background: rgba(0,0,0,0.7);
       opacity: 0; transition: opacity var(--trans);
       display: flex; align-items: flex-end; padding: 10px;
+      pointer-events: none;
     }
     .photo-card:hover .photo-hover-overlay { opacity: 1; }
     .photo-hover-desc {
@@ -771,7 +772,7 @@
                  class="photo-badge-score"
                  :class="scoreClass(mapSelectedPhoto.overall_score)"
                  style="display:inline-block">
-              {{ mapSelectedPhoto.overall_score.toFixed(1) }}
+              {{ Number(mapSelectedPhoto.overall_score).toFixed(1) }}
             </div>
             <div class="map-photo-desc">{{ mapSelectedPhoto.description }}</div>
           </template>
@@ -833,7 +834,7 @@
               v-if="!selectMode && photo.overall_score != null"
               class="photo-badge-score"
               :class="scoreClass(photo.overall_score)"
-            >{{ photo.overall_score.toFixed(1) }}</div>
+            >{{ Number(photo.overall_score).toFixed(1) }}</div>
 
             <div
               v-if="!selectMode && photo.format && !['jpg','jpeg','png'].includes(photo.format.toLowerCase())"
@@ -877,7 +878,7 @@
             <div class="lb-section-title">Score</div>
             <div class="lb-overall-score">
               <span class="lb-overall-big" :style="{ color: scoreColor(lightbox.photo.overall_score) }">
-                {{ lightbox.photo.overall_score != null ? lightbox.photo.overall_score.toFixed(1) : '—' }}
+                {{ lightbox.photo.overall_score != null ? Number(lightbox.photo.overall_score).toFixed(1) : '—' }}
               </span>
               <span class="lb-overall-max">/10</span>
             </div>
