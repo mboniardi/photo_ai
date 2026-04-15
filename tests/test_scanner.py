@@ -105,6 +105,24 @@ class TestScanFolder:
         result2 = scan_folder(str(tmp_path), db_path=tmp_db)
         assert result2.new == 1  # reindexed
 
+    def test_excluded_exts_are_skipped(self, tmp_path, tmp_db, monkeypatch):
+        """File con estensione in EXCLUDED_EXTS non devono essere indicizzati."""
+        import config, importlib
+        monkeypatch.setenv("EXCLUDED_EXTS", ".cr3,.nef")
+        importlib.reload(config)
+        import services.scanner as scanner_mod
+        importlib.reload(scanner_mod)
+        from services.scanner import scan_folder
+
+        make_jpeg(str(tmp_path / "photo.jpg"))
+        (tmp_path / "raw.cr3").write_bytes(b"fake cr3")
+        (tmp_path / "raw.nef").write_bytes(b"fake nef")
+
+        result = scan_folder(str(tmp_path), db_path=tmp_db)
+        assert result.new == 1  # solo il JPEG
+
+        importlib.reload(config)  # ripristina config per altri test
+
     def test_rescan_preserves_user_flags(self, tmp_path, tmp_db):
         from services.scanner import scan_folder
         from database.photos import get_photo_by_id, update_photo

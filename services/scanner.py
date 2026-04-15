@@ -9,6 +9,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
+import config
 from database.photos import insert_photo, get_photos, update_photo
 from services.exif_reader import read_exif
 
@@ -58,7 +59,7 @@ def scan_folder(folder_path: str, db_path: Optional[str] = None) -> ScanResult:
     for dirpath, _, filenames in os.walk(folder_path):
         for fname in filenames:
             ext = os.path.splitext(fname)[1].lower()
-            if ext not in SUPPORTED_EXTS:
+            if ext not in SUPPORTED_EXTS or ext in config.EXCLUDED_EXTS:
                 continue
 
             abs_path = os.path.join(dirpath, fname)

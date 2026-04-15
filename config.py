@@ -27,6 +27,13 @@ REMOTE_DB: str = f"{APP_DATA_PATH}/photo_ai.db"
 GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 GEMINI_EMBED_MODEL: str = os.environ.get("GEMINI_EMBED_MODEL", "gemini-embedding-exp-03-07")
+
+# Estensioni da escludere dalla scansione (es. ".cr3,.nef")
+EXCLUDED_EXTS: set = {
+    e.strip().lower()
+    for e in os.environ.get("EXCLUDED_EXTS", "").split(",")
+    if e.strip()
+}
 GOOGLE_CLIENT_ID: str = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET: str = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 SECRET_KEY: str = os.environ.get("SECRET_KEY", "")
