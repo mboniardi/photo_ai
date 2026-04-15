@@ -50,9 +50,9 @@ def scan_folder(folder_path: str, db_path: Optional[str] = None) -> ScanResult:
     """
     result = ScanResult()
 
-    # Indice veloce dei file già presenti: file_path → (file_size, exif_date, photo_id)
+    # Indice veloce dei file già presenti: file_path → (file_size, exif_date, photo_id, is_trash)
     existing = {
-        row["file_path"]: (row["file_size"], row["exif_date"], row["id"])
+        row["file_path"]: (row["file_size"], row["exif_date"], row["id"], row["is_trash"])
         for row in get_photos(db_path, folder_path=folder_path, limit=100000)
     }
 
@@ -70,7 +70,13 @@ def scan_folder(folder_path: str, db_path: Optional[str] = None) -> ScanResult:
 
                 # Deduplicazione
                 if abs_path in existing:
-                    prev_size, prev_date, photo_id = existing[abs_path]
+                    prev_size, prev_date, photo_id, is_trash = existing[abs_path]
+                    # Se era in trash, ripristinala come attiva
+                    if is_trash:
+                        update_photo(db_path, photo_id, is_trash=0)
+                        result.new += 1
+                        result.new_photo_ids.append(photo_id)
+                        continue
                     if prev_size == current_size and prev_date == current_date:
                         result.skipped += 1
                         continue
