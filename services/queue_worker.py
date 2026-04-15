@@ -46,6 +46,7 @@ class QueueWorker:
         self.is_paused  = False
         self._task: Optional[asyncio.Task] = None
         self.current_photo_name: Optional[str] = None
+        self._transient_pause_until: float = 0.0
 
     async def start(self) -> None:
         """Avvia il loop del worker in background."""
@@ -162,12 +163,9 @@ class QueueWorker:
                                     error_msg=str(e)[:500])
             else:
                 update_queue_status(self._db_path, qid, "pending")
-                # Backoff esponenziale su errori temporanei (503, 429)
-                err_str = str(e)
-                if "503" in err_str or "429" in err_str:
-                    delay = 30 * (2 ** (current["attempts"] - 1))  # 30s, 60s
-                    logger.info("Backoff %ss per errore temporaneo (qid=%s)", delay, qid)
-                    await asyncio.sleep(delay)
+                if "503" in str(e) or "429" in str(e):
+                    logger.info("Errore temporaneo API — pausa coda 60s (qid=%s)", qid)
+                    self._transient_pause_until = time.monotonic() + 60
 
         finally:
             self.current_photo_name = None
@@ -178,6 +176,10 @@ class QueueWorker:
         """Loop principale: consuma la coda rispettando il rate limit."""
         while self.is_running:
             if self.is_paused:
+                await asyncio.sleep(2)
+                continue
+
+            if time.monotonic() < self._transient_pause_until:
                 await asyncio.sleep(2)
                 continue
 
