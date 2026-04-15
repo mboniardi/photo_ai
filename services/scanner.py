@@ -54,7 +54,7 @@ def scan_folder(folder_path: str, db_path: Optional[str] = None) -> ScanResult:
     # Indice veloce dei file già presenti: file_path → (file_size, exif_date, photo_id, is_trash, stored_folder)
     # Cerca per prefisso del file_path (non per folder_path esatto) così cattura anche foto
     # già indicizzate sotto una sottocartella aggiunta in precedenza separatamente.
-    from database.db import get_db
+    from database import get_db
     prefix = folder_path.rstrip("/") + "/"
     with get_db(db_path) as _conn:
         _rows = _conn.execute(
