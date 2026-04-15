@@ -65,11 +65,53 @@ def test_ai_connection():
 
 
 @router.put("")
-def put_settings(body: dict):
+async def put_settings(body: dict):
     """Aggiorna le impostazioni ricevute. Solo chiavi consentite."""
     unknown = set(body) - ALLOWED_KEYS
     if unknown:
         raise HTTPException(status_code=422, detail=f"Chiavi non consentite: {sorted(unknown)}")
     for key, value in body.items():
         set_setting(config.LOCAL_DB, key=key, value=str(value))
+
+    # Se cambia il motore AI o la sua chiave, ricrea e riavvia il worker
+    engine_keys = {"ai_engine", "gemini_api_key", "groq_api_key",
+                   "ollama_base_url", "ollama_vision_model", "ollama_embed_model"}
+    if body.keys() & engine_keys:
+        await _restart_worker()
+
     return {"ok": True}
+
+
+async def _restart_worker():
+    """Ferma il worker corrente e ne avvia uno nuovo con le impostazioni aggiornate."""
+    from api.queue import get_worker, set_worker
+    from services.queue_worker import QueueWorker
+
+    old_worker = get_worker()
+    if old_worker:
+        await old_worker.stop()
+
+    engine_name = get_setting(config.LOCAL_DB, "ai_engine") or "gemini"
+    try:
+        if engine_name == "gemini":
+            from services.ai.gemini import GeminiEngine
+            api_key = get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
+            engine = GeminiEngine(api_key=api_key)
+        elif engine_name == "groq":
+            from services.ai.groq_engine import GroqEngine
+            api_key = get_setting(config.LOCAL_DB, "groq_api_key") or config.GROQ_API_KEY
+            engine = GroqEngine(api_key=api_key)
+        else:
+            from services.ai.ollama import OllamaEngine
+            base_url = get_setting(config.LOCAL_DB, "ollama_base_url") or "http://localhost:11434"
+            vision_model = get_setting(config.LOCAL_DB, "ollama_vision_model") or "llava"
+            embed_model  = get_setting(config.LOCAL_DB, "ollama_embed_model") or "nomic-embed-text"
+            engine = OllamaEngine(base_url=base_url, vision_model=vision_model, embed_model=embed_model)
+
+        rpm = int(get_setting(config.LOCAL_DB, "analysis_rpm_limit") or config.ANALYSIS_RPM_LIMIT)
+        worker = QueueWorker(engine=engine, db_path=config.LOCAL_DB, rpm_limit=rpm)
+        await worker.start()
+        set_worker(worker)
+        logger.info("Worker riavviato con engine=%s", engine_name)
+    except Exception as exc:
+        logger.error("Impossibile riavviare il worker: %s", exc)

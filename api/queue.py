@@ -20,6 +20,9 @@ def set_worker(worker) -> None:
     global _worker
     _worker = worker
 
+def get_worker():
+    return _worker
+
 
 class AddRequest(BaseModel):
     photo_ids: list[int]
