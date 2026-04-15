@@ -8,6 +8,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -320,6 +325,27 @@
 
     /* LOAD MORE */
     .load-more-container { padding: 24px; text-align: center; }
+
+    /* ── MAP VIEW ─────────────────────────────────────────────────── */
+    .map-view { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+    .map-container { flex: 1; min-height: 0; }
+    .map-photo-panel {
+      width: 300px; min-width: 300px; overflow-y: auto;
+      background: var(--card); border-left: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 12px; padding: 16px;
+    }
+    .map-photo-thumb {
+      width: 100%; aspect-ratio: 4/3; object-fit: contain;
+      background: #000; border-radius: var(--radius); cursor: pointer;
+      transition: opacity var(--trans);
+    }
+    .map-photo-thumb:hover { opacity: 0.85; }
+    .map-photo-name { font-size: 11px; color: var(--muted); word-break: break-all; }
+    .map-photo-desc { font-size: 13px; color: var(--text); line-height: 1.5; }
+    .map-photo-empty {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      font-size: 13px; color: var(--muted); text-align: center; padding: 24px;
+    }
     .load-more-btn {
       padding: 10px 32px; background: var(--card); border: 1px solid var(--border);
       border-radius: var(--radius); color: var(--muted); cursor: pointer;
@@ -525,12 +551,20 @@
         <div class="sidebar-label">Library</div>
         <div
           class="sidebar-item"
-          :class="{ active: selectedFolder === null && !isSearchMode }"
+          :class="{ active: currentView === 'grid' && selectedFolder === null && !isSearchMode }"
           @click="selectFolder(null)"
         >
           <span>🖼</span>
           <span class="sidebar-item-name">All photos</span>
           <span v-if="totalPhotos > 0" class="sidebar-badge">{{ totalPhotos }}</span>
+        </div>
+        <div
+          class="sidebar-item"
+          :class="{ active: currentView === 'map' }"
+          @click="switchToMap"
+        >
+          <span>🗺</span>
+          <span class="sidebar-item-name">Map</span>
         </div>
       </div>
 
@@ -721,8 +755,34 @@
         </div>
       </transition>
 
+      <!-- MAP VIEW -->
+      <div v-if="currentView === 'map'" class="map-view">
+        <div id="photo-map" class="map-container"></div>
+        <div class="map-photo-panel">
+          <template v-if="mapSelectedPhoto">
+            <img
+              class="map-photo-thumb"
+              :src="`/api/photos/${mapSelectedPhoto.id}/thumbnail`"
+              @click="openMapPhoto"
+              title="Click to open"
+            />
+            <div class="map-photo-name">{{ mapSelectedPhoto.filename }}</div>
+            <div v-if="mapSelectedPhoto.overall_score != null"
+                 class="photo-badge-score"
+                 :class="scoreClass(mapSelectedPhoto.overall_score)"
+                 style="display:inline-block">
+              {{ mapSelectedPhoto.overall_score.toFixed(1) }}
+            </div>
+            <div class="map-photo-desc">{{ mapSelectedPhoto.description }}</div>
+          </template>
+          <div v-else class="map-photo-empty">
+            Clicca un punto sulla mappa per vedere la foto
+          </div>
+        </div>
+      </div>
+
       <!-- PHOTO GRID -->
-      <div class="grid-container" ref="gridContainer">
+      <div v-show="currentView === 'grid'" class="grid-container" ref="gridContainer">
         <div v-if="isSearchMode && photos.length > 0" style="padding-bottom:10px; font-size:12px; color:var(--muted)">
           Results for "<span style="color:var(--amber)">{{ lastSearchQuery }}</span>" — {{ photos.length }} photos
         </div>
@@ -1215,6 +1275,7 @@ createApp({
     }
 
     function selectFolder(path) {
+      currentView.value = 'grid';
       selectedFolder.value = path;
       isSearchMode.value = false;
       searchQuery.value = '';
@@ -1685,6 +1746,47 @@ createApp({
     }
 
     /* INIT */
+    /* MAP VIEW */
+    const currentView = ref('grid');
+    const mapSelectedPhoto = ref(null);
+    let _leafletMap = null;
+
+    async function switchToMap() {
+      currentView.value = 'map';
+      await nextTick();
+      if (_leafletMap) return;
+      const container = document.getElementById('photo-map');
+      if (!container) return;
+
+      _leafletMap = L.map('photo-map').setView([20, 10], 2);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19,
+      }).addTo(_leafletMap);
+
+      const data = await apiGet('/api/photos/map');
+      if (!data || !data.length) return;
+
+      const cluster = L.markerClusterGroup({ chunkedLoading: true });
+      for (const photo of data) {
+        const marker = L.marker([photo.lat, photo.lon]);
+        marker.on('click', () => { mapSelectedPhoto.value = photo; });
+        cluster.addLayer(marker);
+      }
+      _leafletMap.addLayer(cluster);
+    }
+
+    function switchToGrid() {
+      currentView.value = 'grid';
+      mapSelectedPhoto.value = null;
+    }
+
+    async function openMapPhoto() {
+      if (!mapSelectedPhoto.value) return;
+      const full = await apiGet(`/api/photos/${mapSelectedPhoto.value.id}`);
+      if (full) openLightbox(full);
+    }
+
     // Infinite scroll: osserva il sentinel in fondo alla lista
     watch(loadMoreSentinel, (el) => {
       if (scrollObserver) scrollObserver.disconnect();
@@ -1738,6 +1840,7 @@ createApp({
       scoreClass, scoreColor, qualityLabel, qualityClass,
       formatBytes, formatDate, descSnippet,
       showAddFolder, addFolderLoading, addFolderForm, openAddFolder, submitAddFolder,
+      currentView, mapSelectedPhoto, switchToMap, switchToGrid, openMapPhoto,
       browserRoot, browserCurrentPath, browserDirs, browserLoading, browserError, browserBreadcrumbs, browseTo, selectBrowserPath,
       showSettingsModal, savingSettings, testingAi, testResult, settingsForm,
       purgingTrash, purgeResult, purgeTrash,

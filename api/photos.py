@@ -50,6 +50,21 @@ def list_photos(
     return [dict(p) for p in photos]
 
 
+@router.get("/map")
+def get_map_photos():
+    """Ritorna tutte le foto con coordinate GPS per la vista mappa."""
+    from database import get_db
+    with get_db(config.LOCAL_DB) as conn:
+        rows = conn.execute(
+            """SELECT id, latitude AS lat, longitude AS lon,
+                      filename, description, overall_score
+               FROM photos
+               WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+                 AND (is_trash = 0 OR is_trash IS NULL)"""
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 @router.get("/{photo_id}")
 def get_photo(photo_id: int):
     photo = get_photo_by_id(config.LOCAL_DB, photo_id)
