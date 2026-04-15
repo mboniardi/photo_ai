@@ -1187,7 +1187,7 @@ createApp({
       p.set('offset', String(pageOffset));
       if (filters.min_score > 1)    p.set('min_score', String(filters.min_score));
       if (filters.only_favorites)   p.set('is_favorite', 'true');
-      if (filters.only_trash)       p.set('is_trash', 'true');
+      p.set('is_trash', filters.only_trash ? 'true' : 'false');
       if (filters.analyzed !== '')  p.set('analyzed', filters.analyzed);
       if (filters.formats.length)   p.set('format', filters.formats.join(','));
       return p;
