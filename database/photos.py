@@ -42,7 +42,7 @@ def insert_photo(
     with get_db(db_path) as conn:
         cur = conn.execute(
             """
-            INSERT INTO photos (
+            INSERT OR IGNORE INTO photos (
                 file_path, folder_path, filename, format, file_size,
                 width, height, exif_orientation, exif_date,
                 camera_make, camera_model, lens_model,
