@@ -190,23 +190,20 @@ write_files:
 
 package_update: true
 packages:
-  - software-properties-common
-  - rsync
   - openssh-server
   - cifs-utils
+  - curl
 
 runcmd:
-  - add-apt-repository universe -y
-  - apt-get update -y
   - mkdir -p /mnt/nas
   - "echo '//${NAS_SERVER}/${NAS_SHARE} /mnt/nas cifs credentials=/etc/nas-credentials,vers=3.0,_netdev,nofail 0 0' >> /etc/fstab"
   - mount -a || true
   - rm -rf /opt/photo_ai
   - git clone $APP_GIT_REPO -b $APP_GIT_BRANCH /opt/photo_ai
   - mv /tmp/photo_ai.env /opt/photo_ai/.env
-  - bash /opt/photo_ai/install.sh
   - mkdir -p /opt/photo_ai/data
   - "printf '$authorizedEmailsWriteFile\n' > /opt/photo_ai/data/authorized_emails.txt || true"
+  - bash /opt/photo_ai/install.sh
 "@ | Set-Content "$ciDir\user-data" -Encoding UTF8
 
 # Create ISO — try oscdimg (Windows ADK) first, fall back to WSL2 mkisofs

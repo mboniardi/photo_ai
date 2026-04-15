@@ -1,0 +1,14 @@
+services:
+  photo_ai:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      # Host port comes from APP_PORT in .env (default 8080).
+      # Container always listens on 8080 internally.
+      - "${APP_PORT:-8080}:8080"
+    volumes:
+      # NAS photos — read-only inside the container
+      - /mnt/nas:/mnt/nas:ro
+      # Persistent data: SQLite DB, authorized_emails.txt, backups
+      - /opt/photo_ai/data:/opt/photo_ai/data
