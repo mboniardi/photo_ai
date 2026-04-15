@@ -83,7 +83,7 @@ def _build_prompt(location_hint: str) -> str:
 Se riconosci il luogo specifico nella foto (monumento, città, sito storico, paesaggio noto), nominalo esplicitamente nella descrizione.
 
 {{
-  "descrizione": "Descrizione dettagliata in italiano, 3-5 frasi. Descrivi soggetto, composizione, luce, colori, atmosfera. Se riconosci il luogo specifico nominalo esplicitamente (es. 'Il Tempio di Kom Ombo...' o 'La Torre Eiffel...'). Sii specifico e evocativo.",
+  "descrizione": "Descrizione in italiano, 2-3 frasi. Descrivi soggetto, composizione, luce e atmosfera. Se riconosci il luogo specifico nominalo esplicitamente (es. 'Il Tempio di Kom Ombo...' o 'La Torre Eiffel...').",
   "punteggio_tecnico": <intero 1-10: messa a fuoco, esposizione corretta, rumore, nitidezza, bilanciamento bianco>,
   "punteggio_estetico": <intero 1-10: composizione, uso della luce, impatto emotivo, creatività, equilibrio visivo>,
   "soggetto": "<soggetto principale in 3-5 parole>",
