@@ -265,7 +265,7 @@
     .photo-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
     .photo-grid.cols-6 { grid-template-columns: repeat(6, 1fr); }
     .photo-card {
-      position: relative; background: var(--card); border-radius: var(--radius);
+      position: relative; background: #000; border-radius: var(--radius);
       overflow: hidden; cursor: pointer; border: 2px solid transparent;
       transition: border-color var(--trans), transform var(--trans); aspect-ratio: 1;
     }
@@ -275,7 +275,7 @@
       content: ''; position: absolute; inset: 0;
       background: rgba(239,68,68,0.25); pointer-events: none;
     }
-    .photo-thumb { width: 100%; height: 100%; object-fit: cover; display: block; background: var(--border); }
+    .photo-thumb { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
     .photo-thumb-placeholder {
       width: 100%; height: 100%; background: var(--border);
       display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 24px;
