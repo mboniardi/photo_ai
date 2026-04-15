@@ -45,15 +45,15 @@ def get_all_folders(db_path: Optional[str] = None) -> list:
     with get_db(db_path) as conn:
         return conn.execute(
             """
-            SELECT f.*,
-                   COALESCE(p.live_count, 0) AS photo_count
+            SELECT f.id, f.folder_path, f.display_name,
+                   f.default_location_name, f.default_latitude, f.default_longitude,
+                   f.analyzed_count, f.last_scanned, f.auto_analyze,
+                   COALESCE((
+                       SELECT COUNT(*) FROM photos p
+                       WHERE p.folder_path = f.folder_path
+                         AND (p.is_trash = 0 OR p.is_trash IS NULL)
+                   ), 0) AS photo_count
             FROM folders f
-            LEFT JOIN (
-                SELECT folder_path, COUNT(*) AS live_count
-                FROM photos
-                WHERE is_trash = 0 OR is_trash IS NULL
-                GROUP BY folder_path
-            ) p ON p.folder_path = f.folder_path
             ORDER BY f.folder_path
             """
         ).fetchall()
