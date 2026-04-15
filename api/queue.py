@@ -5,7 +5,7 @@ from typing import Optional
 
 from database.queue import (
     add_to_queue, get_queue_counts, remove_queue_item,
-    get_next_pending, retry_errors,
+    get_next_pending, retry_errors, clear_queue,
 )
 from database.photos import get_photos, count_photos
 import config
@@ -81,6 +81,13 @@ def resume_queue():
     if _worker:
         _worker.resume()
     return {"ok": True}
+
+
+@router.delete("/clear")
+def clear_queue_endpoint():
+    """Svuota la coda (pending e error). Non tocca i processing."""
+    count = clear_queue(config.LOCAL_DB)
+    return {"ok": True, "removed": count}
 
 
 @router.post("/retry-errors")

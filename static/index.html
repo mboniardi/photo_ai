@@ -583,6 +583,7 @@
               <button v-if="queue.is_running && !queue.is_paused" class="queue-btn" @click="pauseQueue">Pause</button>
               <button v-if="queue.is_paused" class="queue-btn" @click="resumeQueue">Resume</button>
               <button v-if="(queue.error || 0) > 0" class="queue-btn" @click="retryErrors">↺ Retry errors</button>
+              <button v-if="(queue.pending || 0) + (queue.error || 0) > 0" class="queue-btn danger" @click="clearQueue">✕ Clear queue</button>
             </div>
           </div>
         </transition>
@@ -1395,6 +1396,7 @@ createApp({
     async function pauseQueue()  { await apiPost('/api/queue/pause');  fetchQueueStatus(); }
     async function resumeQueue() { await apiPost('/api/queue/resume'); fetchQueueStatus(); }
     async function retryErrors() { await apiPost('/api/queue/retry-errors'); fetchQueueStatus(); }
+    async function clearQueue()  { await apiDelete('/api/queue/clear'); fetchQueueStatus(); }
 
     /* LIGHTBOX */
     const lightbox = reactive({ open: false, photo: null, editDesc: '', origDesc: '' });
@@ -1729,7 +1731,7 @@ createApp({
       showFilters, filters, activeFilterCount, filterBadges, clearFilter, clearAllFilters,
       selectMode, selectedIds, toggleSelectMode, selectAll, clearSelection, onPhotoClick,
       downloadZip, bulkFavorite, bulkTrash, bulkAddToQueue,
-      queueOpen, queue, queueProgress, pauseQueue, resumeQueue, retryErrors,
+      queueOpen, queue, queueProgress, pauseQueue, resumeQueue, retryErrors, clearQueue,
       lightbox, lightboxIndex, openLightbox, closeLightbox, lightboxPrev, lightboxNext,
       lbSubjects, lbAtmosphere, lbColors, lbStrengths, lbWeaknesses,
       saveDescription, toggleFavorite, toggleTrash, reanalyze,
