@@ -628,6 +628,9 @@
           <button class="toolbar-btn" :class="{ active: selectMode }" @click="toggleSelectMode">
             {{ selectMode ? '✓ Selecting' : 'Select' }}
           </button>
+          <button v-if="selectMode" class="toolbar-btn" @click="selectAll">
+            Select all ({{ photos.length }})
+          </button>
         </div>
       </div>
 
@@ -781,10 +784,8 @@
           </div>
         </div>
 
-        <div v-if="hasMore && !isSearchMode" class="load-more-container">
-          <button class="load-more-btn" @click="loadMore" :disabled="loading">
-            {{ loading ? 'Loading…' : 'Load more' }}
-          </button>
+        <div v-if="hasMore && !isSearchMode" class="load-more-container" ref="loadMoreSentinel">
+          <div v-if="loading" class="spinner"></div>
         </div>
       </div>
     </main>
@@ -1087,7 +1088,7 @@
 </div><!-- #app -->
 
 <script>
-const { createApp, ref, reactive, computed, onMounted, onBeforeUnmount } = Vue;
+const { createApp, ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } = Vue;
 
 /* ─── API HELPERS ─── */
 const apiFetch = async (url, options = {}) => {
@@ -1153,6 +1154,8 @@ createApp({
     const PAGE_SIZE = 100;
     const density = ref(4);
     const thumbError = reactive({});
+    const loadMoreSentinel = ref(null);
+    let scrollObserver = null;
 
     const sortBy = ref('overall_score');
     const sortDesc = ref(true);
@@ -1192,6 +1195,10 @@ createApp({
     }
 
     function loadMore() { loadPhotos(false); }
+
+    function selectAll() {
+      selectedIds.value = new Set(photos.value.map(p => p.id));
+    }
 
     function selectFolder(path) {
       selectedFolder.value = path;
@@ -1651,6 +1658,18 @@ createApp({
     }
 
     /* INIT */
+    // Infinite scroll: osserva il sentinel in fondo alla lista
+    watch(loadMoreSentinel, (el) => {
+      if (scrollObserver) scrollObserver.disconnect();
+      if (!el) return;
+      scrollObserver = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && hasMore.value && !loading.value) {
+          loadMore();
+        }
+      }, { threshold: 0.1 });
+      scrollObserver.observe(el);
+    });
+
     onMounted(async () => {
       const me = await apiGet('/auth/me');
       if (!me) return;
@@ -1669,6 +1688,7 @@ createApp({
 
     onBeforeUnmount(() => {
       if (queueInterval) clearInterval(queueInterval);
+      if (scrollObserver) scrollObserver.disconnect();
       window.removeEventListener('keydown', onKeydown);
     });
 
@@ -1677,12 +1697,12 @@ createApp({
       user, userInitial,
       folders, selectedFolder, totalPhotos, folderName,
       selectFolder, rescanFolder, deleteFolder,
-      photos, loading, hasMore, density, thumbError,
+      photos, loading, hasMore, density, thumbError, loadMoreSentinel,
       sortBy, sortDesc, toggleSortDir,
       loadPhotos, loadMore,
       searchQuery, isSearchMode, lastSearchQuery, doSearch, clearSearch,
       showFilters, filters, activeFilterCount, filterBadges, clearFilter, clearAllFilters,
-      selectMode, selectedIds, toggleSelectMode, clearSelection, onPhotoClick,
+      selectMode, selectedIds, toggleSelectMode, selectAll, clearSelection, onPhotoClick,
       downloadZip, bulkFavorite, bulkTrash, bulkAddToQueue,
       queueOpen, queue, queueProgress, pauseQueue, resumeQueue,
       lightbox, lightboxIndex, openLightbox, closeLightbox, lightboxPrev, lightboxNext,
