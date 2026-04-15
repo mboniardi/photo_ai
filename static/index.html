@@ -537,7 +537,7 @@
       <div class="sidebar-section">
         <div class="sidebar-label">Folders</div>
         <div
-          v-for="folder in folders"
+          v-for="folder in folders.filter(f => (f.photo_count || 0) > 0)"
           :key="folder.folder_path"
           class="sidebar-item"
           :class="{ active: selectedFolder === folder.folder_path && !isSearchMode }"
