@@ -51,6 +51,9 @@ AUTHORIZED_EMAILS_PATH: str = os.environ.get(
 # Lato massimo (px) a cui viene ridimensionata l'immagine prima di inviarla all'AI
 MAX_SIDE_PX: int = int(os.environ.get("MAX_SIDE_PX", 1280))
 
+# Lato massimo per Groq (free tier: 500k token/giorno — immagini piccole risparmiano quota)
+GROQ_MAX_SIDE_PX: int = int(os.environ.get("GROQ_MAX_SIDE_PX", 768))
+
 # Qualità JPEG di partenza per le immagini inviate all'AI
 JPEG_QUALITY: int = int(os.environ.get("JPEG_QUALITY", 85))
 

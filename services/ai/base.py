@@ -43,6 +43,11 @@ class AIEngine(ABC):
     e OllamaEngine (services/ai/ollama.py).
     """
 
+    @property
+    def max_side_px(self) -> Optional[int]:
+        """Risoluzione massima (lato lungo) da usare per prepare_for_ai. None = default di config."""
+        return None
+
     @abstractmethod
     async def analyze(
         self,

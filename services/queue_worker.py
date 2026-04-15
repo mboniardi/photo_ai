@@ -100,8 +100,9 @@ class QueueWorker:
         self.current_photo_name = photo["filename"]
 
         try:
-            # Prepara immagine per AI
-            image_bytes = prepare_for_ai(photo["file_path"])
+            # Prepara immagine per AI (risoluzione dipende dall'engine)
+            image_bytes = prepare_for_ai(photo["file_path"],
+                                         max_side_px=self._engine.max_side_px)
 
             # Location hint se disponibile
             location_hint = photo["location_name"] or ""

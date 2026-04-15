@@ -19,6 +19,10 @@ class GroqEngine(AIEngine):
         from groq import Groq
         self._client = Groq(api_key=api_key)
 
+    @property
+    def max_side_px(self) -> int:
+        return config.GROQ_MAX_SIDE_PX
+
     async def analyze(self, image_bytes: bytes, location_hint: str = "") -> PhotoAnalysis:
         loop = asyncio.get_running_loop()
         b64 = base64.b64encode(image_bytes).decode()
