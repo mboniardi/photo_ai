@@ -182,6 +182,7 @@ write_files:
       NAS_CIFS_PASSWORD=$NAS_PASSWORD
       APP_PORT=$APP_PORT
       EXCLUDED_EXTS=$EXCLUDED_EXTS
+      GROQ_API_KEY=$GROQ_API_KEY
 
   - path: /etc/nas-credentials
     permissions: '0600'

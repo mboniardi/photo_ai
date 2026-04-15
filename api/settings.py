@@ -11,6 +11,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 ALLOWED_KEYS = {
     "ai_engine",
     "gemini_api_key",
+    "groq_api_key",
     "ollama_base_url",
     "ollama_vision_model",
     "ollama_embed_model",
@@ -38,11 +39,20 @@ def test_ai_connection():
             if not api_key:
                 raise ValueError("GEMINI_API_KEY non configurata")
             client = genai.Client(api_key=api_key)
-            client.models.generate_content(
-                model=config.GEMINI_MODEL,
-                contents=["ping"],
-            )
+            client.models.generate_content(model=config.GEMINI_MODEL, contents=["ping"])
             return {"ok": True, "message": f"Gemini ({config.GEMINI_MODEL}) connesso correttamente"}
+        elif engine_name == "groq":
+            from groq import Groq
+            api_key = get_setting(config.LOCAL_DB, "groq_api_key") or config.GROQ_API_KEY
+            if not api_key:
+                raise ValueError("GROQ_API_KEY non configurata")
+            client = Groq(api_key=api_key)
+            client.chat.completions.create(
+                model=config.GROQ_MODEL,
+                messages=[{"role": "user", "content": "ping"}],
+                max_tokens=1,
+            )
+            return {"ok": True, "message": f"Groq ({config.GROQ_MODEL}) connesso correttamente"}
         else:
             import httpx
             base_url = get_setting(config.LOCAL_DB, "ollama_base_url") or "http://localhost:11434"

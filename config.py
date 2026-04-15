@@ -26,7 +26,10 @@ REMOTE_DB: str = f"{APP_DATA_PATH}/photo_ai.db"
 # ── Secrets / credenziali (nessun default: devono venire dall'env) ─
 GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-GEMINI_EMBED_MODEL: str = os.environ.get("GEMINI_EMBED_MODEL", "gemini-embedding-exp-03-07")
+GEMINI_EMBED_MODEL: str = os.environ.get("GEMINI_EMBED_MODEL", "")
+
+GROQ_API_KEY: str = os.environ.get("GROQ_API_KEY", "")
+GROQ_MODEL: str = os.environ.get("GROQ_MODEL", "meta-llama/llama-4-maverick-17b-128e-instruct")
 
 # Estensioni da escludere dalla scansione (es. ".cr3,.nef")
 EXCLUDED_EXTS: set = {

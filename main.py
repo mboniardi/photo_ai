@@ -136,6 +136,10 @@ async def on_startup():
             from services.ai.gemini import GeminiEngine
             api_key = get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
             engine = GeminiEngine(api_key=api_key)
+        elif engine_name == "groq":
+            from services.ai.groq_engine import GroqEngine
+            api_key = get_setting(config.LOCAL_DB, "groq_api_key") or config.GROQ_API_KEY
+            engine = GroqEngine(api_key=api_key)
         else:
             from services.ai.ollama import OllamaEngine
             base_url = get_setting(config.LOCAL_DB, "ollama_base_url") or "http://localhost:11434"

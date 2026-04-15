@@ -1084,6 +1084,7 @@
           <label class="form-label">AI Engine</label>
           <select class="form-select" v-model="settingsForm.ai_engine">
             <option value="gemini">Gemini (Google)</option>
+            <option value="groq">Groq (Llama 4)</option>
             <option value="ollama">Ollama (local)</option>
           </select>
         </div>
@@ -1092,6 +1093,13 @@
           <div class="form-group">
             <label class="form-label">Gemini API key</label>
             <input class="form-input" type="password" v-model="settingsForm.gemini_api_key" placeholder="AIza…" autocomplete="off" />
+          </div>
+        </template>
+
+        <template v-if="settingsForm.ai_engine === 'groq'">
+          <div class="form-group">
+            <label class="form-label">Groq API key</label>
+            <input class="form-input" type="password" v-model="settingsForm.groq_api_key" placeholder="gsk_…" autocomplete="off" />
           </div>
         </template>
 
@@ -1669,6 +1677,7 @@ createApp({
     const settingsForm = reactive({
       ai_engine: 'gemini',
       gemini_api_key: '',
+      groq_api_key: '',
       ollama_base_url: 'http://localhost:11434',
       ollama_vision_model: 'llava',
       ollama_embed_model: 'nomic-embed-text',
@@ -1681,6 +1690,7 @@ createApp({
       if (data) {
         if (data.ai_engine)            settingsForm.ai_engine = data.ai_engine;
         if (data.gemini_api_key)       settingsForm.gemini_api_key = data.gemini_api_key;
+        if (data.groq_api_key)         settingsForm.groq_api_key = data.groq_api_key;
         if (data.ollama_base_url)      settingsForm.ollama_base_url = data.ollama_base_url;
         if (data.ollama_vision_model)  settingsForm.ollama_vision_model = data.ollama_vision_model;
         if (data.ollama_embed_model)   settingsForm.ollama_embed_model = data.ollama_embed_model;
@@ -1697,6 +1707,9 @@ createApp({
       };
       if (settingsForm.ai_engine === 'gemini' && settingsForm.gemini_api_key) {
         payload.gemini_api_key = settingsForm.gemini_api_key;
+      }
+      if (settingsForm.ai_engine === 'groq' && settingsForm.groq_api_key) {
+        payload.groq_api_key = settingsForm.groq_api_key;
       }
       if (settingsForm.ai_engine === 'ollama') {
         payload.ollama_base_url      = settingsForm.ollama_base_url;
