@@ -5,6 +5,14 @@ set -euo pipefail
 
 APP_DIR="/opt/photo_ai"
 
+# ── 0. Verifica .env ──────────────────────────────────────────────
+if [ ! -f "$APP_DIR/.env" ]; then
+    echo "ERROR: $APP_DIR/.env non trovato."
+    echo "Crea il file con le variabili richieste prima di eseguire install.sh."
+    echo "Esempio: cp $APP_DIR/.env.example $APP_DIR/.env && nano $APP_DIR/.env"
+    exit 1
+fi
+
 # ── 1. Install Docker CE ──────────────────────────────────────────
 echo "[1/2] Installing Docker CE…"
 curl -fsSL https://get.docker.com | sh
