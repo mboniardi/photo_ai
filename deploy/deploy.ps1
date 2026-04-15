@@ -189,6 +189,7 @@ write_files:
       password=$NAS_PASSWORD
 
 package_update: true
+package_upgrade: true
 packages:
   - openssh-server
   - cifs-utils
