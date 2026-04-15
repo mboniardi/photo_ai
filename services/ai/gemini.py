@@ -1,14 +1,16 @@
 """
-Implementazione AIEngine per Google Gemini (§6.6).
-Modelli: gemini-1.5-flash (visione), text-embedding-004 (embedding).
+Implementazione AIEngine per Google Gemini.
+SDK: google-genai (API v1 stabile).
+Modelli: GEMINI_MODEL (visione), GEMINI_EMBED_MODEL (embedding).
 """
 import asyncio
 import json
 import re
 
-import google.generativeai as genai
-import config
+from google import genai
+from google.genai import types
 
+import config
 from services.ai.base import AIEngine, PhotoAnalysis
 
 _REQUIRED_FIELDS = {
@@ -18,16 +20,12 @@ _REQUIRED_FIELDS = {
     "luogo_riconosciuto", "luogo_lat", "luogo_lon",
 }
 
-_VISION_MODEL   = config.GEMINI_MODEL
-_EMBED_MODEL    = "models/text-embedding-004"
-
 
 class GeminiEngine(AIEngine):
     def __init__(self, api_key: str):
         if not api_key:
             raise ValueError("API key Gemini obbligatoria")
-        genai.configure(api_key=api_key)
-        self._model = genai.GenerativeModel(_VISION_MODEL)
+        self._client = genai.Client(api_key=api_key)
 
     async def analyze(
         self,
@@ -35,12 +33,14 @@ class GeminiEngine(AIEngine):
         location_hint: str = "",
     ) -> PhotoAnalysis:
         prompt = _build_prompt(location_hint)
-        image_part = {"mime_type": "image/jpeg", "data": image_bytes}
-        # genai è sync — esegui in executor per non bloccare l'event loop
+        image_part = types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
         loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(
             None,
-            lambda: self._model.generate_content([prompt, image_part])
+            lambda: self._client.models.generate_content(
+                model=config.GEMINI_MODEL,
+                contents=[prompt, image_part],
+            )
         )
         data = _parse_response(response.text)
         return PhotoAnalysis(
@@ -62,13 +62,13 @@ class GeminiEngine(AIEngine):
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(
             None,
-            lambda: genai.embed_content(
-                model=_EMBED_MODEL,
-                content=text,
-                task_type="retrieval_document",
+            lambda: self._client.models.embed_content(
+                model=config.GEMINI_EMBED_MODEL,
+                contents=text,
+                config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT"),
             )
         )
-        return result["embedding"]
+        return result.embeddings[0].values
 
 
 def _build_prompt(location_hint: str) -> str:
@@ -106,7 +106,6 @@ def _parse_response(text: str) -> dict:
     Rimuove eventuali code fence markdown.
     Lancia ValueError se il JSON non è valido o mancano campi obbligatori.
     """
-    # Rimuovi markdown code fences ```json ... ```
     cleaned = re.sub(r"^```(?:json)?\s*", "", text.strip(), flags=re.MULTILINE)
     cleaned = re.sub(r"\s*```$", "", cleaned.strip(), flags=re.MULTILINE)
     cleaned = cleaned.strip()

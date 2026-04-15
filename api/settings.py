@@ -33,14 +33,16 @@ def test_ai_connection():
     engine_name = get_setting(config.LOCAL_DB, "ai_engine") or "gemini"
     try:
         if engine_name == "gemini":
-            import google.generativeai as genai
+            from google import genai
             api_key = get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
             if not api_key:
                 raise ValueError("GEMINI_API_KEY non configurata")
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel(config.GEMINI_MODEL)
-            model.generate_content("ping")
-            return {"ok": True, "message": f"Gemini ({engine_name}) connesso correttamente"}
+            client = genai.Client(api_key=api_key)
+            client.models.generate_content(
+                model=config.GEMINI_MODEL,
+                contents=["ping"],
+            )
+            return {"ok": True, "message": f"Gemini ({config.GEMINI_MODEL}) connesso correttamente"}
         else:
             import httpx
             base_url = get_setting(config.LOCAL_DB, "ollama_base_url") or "http://localhost:11434"
