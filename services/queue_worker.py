@@ -157,19 +157,31 @@ class QueueWorker:
 
         except Exception as e:
             logger.warning("Errore analisi photo_id=%s qid=%s: %s", photo_id, qid, e)
+            error_str = str(e)
+
+            # Pausa transiente su errori temporanei API (429/503), indipendentemente
+            # dal numero di tentativi — altrimenti il worker martella l'API con
+            # ogni foto successiva in coda.
+            if "503" in error_str or "429" in error_str:
+                delay = 120  # default
+                # Formato Groq: "try again in 2m23.7696s"
+                m_min = re.search(r'(\d+)m(\d+(?:\.\d+)?)s', error_str)
+                # Formato Gemini: "retry after 30s" o "retry in 30s"
+                m_sec = re.search(r'retry[^\d]*(\d+(?:\.\d+)?)\s*s', error_str, re.IGNORECASE)
+                if m_min:
+                    delay = max(120, int(m_min.group(1)) * 60 + float(m_min.group(2)) + 5)
+                elif m_sec:
+                    delay = max(120, float(m_sec.group(1)) + 5)
+                logger.info("Errore temporaneo API — pausa coda %.0fs (qid=%s)", delay, qid)
+                self._transient_pause_until = time.monotonic() + delay
+
             increment_attempts(self._db_path, qid)
             current = get_queue_item(self._db_path, qid)
             if current["attempts"] >= MAX_ATTEMPTS:
                 update_queue_status(self._db_path, qid, "error",
-                                    error_msg=str(e)[:500])
+                                    error_msg=error_str[:500])
             else:
                 update_queue_status(self._db_path, qid, "pending")
-                if "503" in str(e) or "429" in str(e):
-                    # Prova a leggere il retry delay suggerito dall'API, altrimenti 120s
-                    m = re.search(r'retry[^\d]*(\d+(?:\.\d+)?)\s*s', str(e), re.IGNORECASE)
-                    delay = max(120, float(m.group(1)) + 5) if m else 120
-                    logger.info("Errore temporaneo API — pausa coda %.0fs (qid=%s)", delay, qid)
-                    self._transient_pause_until = time.monotonic() + delay
 
         finally:
             self.current_photo_name = None
