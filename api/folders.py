@@ -73,7 +73,7 @@ def scan_and_add_folder(req: ScanRequest):
             add_to_queue(config.LOCAL_DB, photo_id=photo["id"], priority=5)
         queued = len(unanalyzed)
     return {"new": result.new, "skipped": result.skipped, "errors": result.errors,
-            "queued": queued}
+            "error_paths": result.error_paths, "queued": queued}
 
 
 @router.post("/rescan")
@@ -87,7 +87,8 @@ def rescan_folder(req: FolderDeleteRequest):
                             analyzed_only=True, is_trash=False)
     update_folder_counts(config.LOCAL_DB, req.folder_path,
                          photo_count=total, analyzed_count=analyzed)
-    return {"new": result.new, "skipped": result.skipped, "errors": result.errors}
+    return {"new": result.new, "skipped": result.skipped, "errors": result.errors,
+            "error_paths": result.error_paths}
 
 
 @router.put("/meta")

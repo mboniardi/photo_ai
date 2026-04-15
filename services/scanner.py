@@ -37,6 +37,7 @@ class ScanResult:
     skipped: int = 0
     errors: int = 0
     new_photo_ids: list[int] = field(default_factory=list)
+    error_paths: list[str] = field(default_factory=list)
 
 
 def scan_folder(folder_path: str, db_path: Optional[str] = None) -> ScanResult:
@@ -56,7 +57,7 @@ def scan_folder(folder_path: str, db_path: Optional[str] = None) -> ScanResult:
         for row in get_photos(db_path, folder_path=folder_path, limit=100000)
     }
 
-    for dirpath, _, filenames in os.walk(folder_path):
+    for dirpath, _, filenames in os.walk(folder_path, followlinks=True):
         for fname in filenames:
             ext = os.path.splitext(fname)[1].lower()
             if ext not in SUPPORTED_EXTS or ext in config.EXCLUDED_EXTS:
@@ -128,7 +129,8 @@ def scan_folder(folder_path: str, db_path: Optional[str] = None) -> ScanResult:
                 result.new_photo_ids.append(photo_id)
 
             except Exception as exc:
-                logger.warning("Errore scansione %s: %s", abs_path, exc)
+                logger.warning("Errore scansione %s: %s", abs_path, exc, exc_info=True)
                 result.errors += 1
+                result.error_paths.append(abs_path)
 
     return result
