@@ -29,7 +29,7 @@ GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 GEMINI_EMBED_MODEL: str = os.environ.get("GEMINI_EMBED_MODEL", "")
 
 GROQ_API_KEY: str = os.environ.get("GROQ_API_KEY", "")
-GROQ_MODEL: str = os.environ.get("GROQ_MODEL", "meta-llama/Llama-4-Maverick-17B-128E-Instruct")
+GROQ_MODEL: str = os.environ.get("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
 
 # Estensioni da escludere dalla scansione (es. ".cr3,.nef")
 EXCLUDED_EXTS: set = {
