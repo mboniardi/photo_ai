@@ -5,7 +5,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional
 
-from database.photos import get_photos, get_photo_by_id, update_photo, count_photos
+from database.photos import get_photos, get_photo_by_id, update_photo, count_photos, purge_trash
 from services.image_processor import generate_thumbnail
 import config
 
@@ -67,6 +67,13 @@ def update_photo_fields(photo_id: int, req: PhotoUpdateRequest):
     if fields:
         update_photo(config.LOCAL_DB, photo_id, **fields)
     return {"ok": True}
+
+
+@router.delete("/trash")
+def purge_trash_endpoint():
+    """Rimuove definitivamente dal DB tutte le foto marcate is_trash=1."""
+    deleted = purge_trash(config.LOCAL_DB)
+    return {"ok": True, "deleted": deleted}
 
 
 @router.get("/{photo_id}/thumbnail")

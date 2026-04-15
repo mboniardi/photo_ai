@@ -1064,6 +1064,18 @@
           <input class="form-input" type="number" v-model.number="settingsForm.analysis_rpm_limit" min="1" max="60" />
         </div>
 
+        <div class="divider"></div>
+
+        <div class="form-group">
+          <label class="form-label">Database</label>
+          <button class="toolbar-btn" style="color:var(--danger)" @click="purgeTrash" :disabled="purgingTrash">
+            {{ purgingTrash ? 'Removing…' : '🗑 Remove trashed photos from DB' }}
+          </button>
+          <div v-if="purgeResult" style="font-size:12px; margin-top:6px; color:var(--muted)">
+            {{ purgeResult }}
+          </div>
+        </div>
+
         <div class="modal-footer">
           <button class="btn-secondary" @click="showSettingsModal = false">Cancel</button>
           <button class="btn-primary" @click="saveSettings" :disabled="savingSettings">
@@ -1588,6 +1600,8 @@ createApp({
     const savingSettings = ref(false);
     const testingAi = ref(false);
     const testResult = ref(null);
+    const purgingTrash = ref(false);
+    const purgeResult = ref(null);
     const settingsForm = reactive({
       ai_engine: 'gemini',
       gemini_api_key: '',
@@ -1628,6 +1642,16 @@ createApp({
       await apiPut('/api/settings', payload);
       savingSettings.value = false;
       showSettingsModal.value = false;
+    }
+
+    async function purgeTrash() {
+      if (!confirm('Rimuovere definitivamente dal DB tutte le foto nel cestino? I file sul NAS non vengono toccati.')) return;
+      purgingTrash.value = true;
+      purgeResult.value = null;
+      const data = await apiDelete('/api/photos/trash');
+      if (data) purgeResult.value = `${data.deleted} foto rimosse dal DB.`;
+      purgingTrash.value = false;
+      loadPhotos(true);
     }
 
     async function testAiConnection() {
@@ -1713,6 +1737,7 @@ createApp({
       showAddFolder, addFolderLoading, addFolderForm, openAddFolder, submitAddFolder,
       browserRoot, browserCurrentPath, browserDirs, browserLoading, browserError, browserBreadcrumbs, browseTo, selectBrowserPath,
       showSettingsModal, savingSettings, testingAi, testResult, settingsForm,
+      purgingTrash, purgeResult, purgeTrash,
       openSettings, saveSettings, testAiConnection,
     };
   }

@@ -180,6 +180,13 @@ def get_photo_id_by_path(db_path: Optional[str], file_path: str) -> Optional[int
         return row["id"] if row else None
 
 
+def purge_trash(db_path: Optional[str]) -> int:
+    """Rimuove definitivamente dal DB tutte le foto con is_trash=1. Ritorna il numero di record eliminati."""
+    with get_db(db_path) as conn:
+        cur = conn.execute("DELETE FROM photos WHERE is_trash = 1")
+        return cur.rowcount
+
+
 def delete_photo_by_path(db_path: Optional[str], file_path: str) -> None:
     """Rimuove il record photo con il dato file_path."""
     with get_db(db_path) as conn:
