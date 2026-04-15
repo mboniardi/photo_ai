@@ -1355,19 +1355,17 @@ createApp({
     }
 
     async function bulkFavorite() {
-      for (const id of selectedIds.value) {
-        await apiPut(`/api/photos/${id}`, { is_favorite: 1 });
-        const p = photos.value.find(x => x.id === id);
-        if (p) p.is_favorite = 1;
-      }
+      const ids = [...selectedIds.value];
+      await Promise.all(ids.map(id => apiPut(`/api/photos/${id}`, { is_favorite: 1 })));
+      clearSelection();
+      loadPhotos(true);
     }
 
     async function bulkTrash() {
-      for (const id of selectedIds.value) {
-        await apiPut(`/api/photos/${id}`, { is_trash: 1 });
-        const p = photos.value.find(x => x.id === id);
-        if (p) p.is_trash = 1;
-      }
+      const ids = [...selectedIds.value];
+      await Promise.all(ids.map(id => apiPut(`/api/photos/${id}`, { is_trash: 1 })));
+      clearSelection();
+      loadPhotos(true);
     }
 
     async function bulkAddToQueue() {
