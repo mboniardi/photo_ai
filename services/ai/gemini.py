@@ -7,6 +7,7 @@ import json
 import re
 
 import google.generativeai as genai
+import config
 
 from services.ai.base import AIEngine, PhotoAnalysis
 
@@ -17,7 +18,7 @@ _REQUIRED_FIELDS = {
     "luogo_riconosciuto", "luogo_lat", "luogo_lon",
 }
 
-_VISION_MODEL   = "gemini-2.0-flash"
+_VISION_MODEL   = config.GEMINI_MODEL
 _EMBED_MODEL    = "models/text-embedding-004"
 
 
