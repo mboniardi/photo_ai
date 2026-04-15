@@ -23,6 +23,9 @@ LOCAL_DB: str = os.environ.get("LOCAL_DB", "/opt/photo_ai/data/photo_ai.db")
 # DB remoto sul NAS — sorgente al boot, destinazione dei backup
 REMOTE_DB: str = f"{APP_DATA_PATH}/photo_ai.db"
 
+# Cartella dove vengono caricati i JSON di Google Takeout
+TAKEOUT_JSON_PATH: str = os.environ.get("TAKEOUT_JSON_PATH", f"{APP_DATA_PATH}/takeout_json")
+
 # ── Secrets / credenziali (nessun default: devono venire dall'env) ─
 GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")

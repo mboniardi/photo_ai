@@ -1147,6 +1147,54 @@
           </div>
         </div>
 
+        <div class="divider"></div>
+
+        <div class="form-group">
+          <label class="form-label">Google Takeout — import GPS</label>
+          <div style="font-size:12px; color:var(--muted); margin-bottom:8px">
+            Seleziona la cartella con i <code>.json</code> estratti dall'export di Google Foto.
+            Le coordinate verranno importate nel DB per le foto che non ne hanno.
+          </div>
+          <input type="file" ref="takeoutInput" webkitdirectory accept=".json"
+                 style="display:none" @change="onTakeoutFilesSelected" />
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+            <button class="toolbar-btn" @click="$refs.takeoutInput.click()" :disabled="takeoutUploading">
+              📂 Seleziona cartella JSON
+            </button>
+            <button class="toolbar-btn" @click="runTakeoutImport"
+                    :disabled="takeoutUploading || takeoutImporting || takeoutJsonCount === 0">
+              {{ takeoutImporting ? 'Importando…' : '📍 Importa coordinate' }}
+            </button>
+          </div>
+          <!-- Progress upload -->
+          <div v-if="takeoutUploading" style="margin-top:8px">
+            <div style="font-size:12px; color:var(--muted)">
+              Upload: {{ takeoutUploadProgress.done }} / {{ takeoutUploadProgress.total }} file…
+            </div>
+            <div style="background:var(--border); border-radius:4px; height:4px; margin-top:4px">
+              <div :style="{
+                width: takeoutUploadProgress.total
+                  ? (takeoutUploadProgress.done / takeoutUploadProgress.total * 100) + '%'
+                  : '0%',
+                background:'var(--amber)', height:'100%', borderRadius:'4px',
+                transition:'width 0.2s'
+              }"></div>
+            </div>
+          </div>
+          <!-- Stato -->
+          <div v-if="takeoutJsonCount > 0 && !takeoutUploading"
+               style="font-size:12px; color:var(--muted); margin-top:6px">
+            {{ takeoutJsonCount }} JSON presenti sul server
+          </div>
+          <div v-if="takeoutImportResult" style="font-size:12px; margin-top:6px"
+               :style="{ color: takeoutImportResult.updated > 0 ? 'var(--green)' : 'var(--muted)' }">
+            Aggiornate: {{ takeoutImportResult.updated }} foto ·
+            Già con coords: {{ takeoutImportResult.skipped_already_has }} ·
+            Senza coords nel JSON: {{ takeoutImportResult.skipped_no_coords }} ·
+            Non trovate nel DB: {{ takeoutImportResult.not_found }}
+          </div>
+        </div>
+
         <div class="modal-footer">
           <button class="btn-secondary" @click="showSettingsModal = false">Cancel</button>
           <button class="btn-primary" @click="saveSettings" :disabled="savingSettings">
@@ -1675,6 +1723,53 @@ createApp({
     const testResult = ref(null);
     const purgingTrash = ref(false);
     const purgeResult = ref(null);
+
+    // ── Takeout ──────────────────────────────────────────────────────
+    const takeoutUploading = ref(false);
+    const takeoutImporting = ref(false);
+    const takeoutJsonCount = ref(0);
+    const takeoutImportResult = ref(null);
+    const takeoutUploadProgress = reactive({ done: 0, total: 0 });
+
+    async function fetchTakeoutStatus() {
+      const data = await apiGet('/api/takeout/status');
+      if (data) takeoutJsonCount.value = data.json_count;
+    }
+
+    async function onTakeoutFilesSelected(evt) {
+      const all = Array.from(evt.target.files).filter(f => f.name.endsWith('.json'));
+      if (!all.length) { showToast('Nessun file .json trovato nella cartella.', 'warn'); return; }
+
+      takeoutUploading.value = true;
+      takeoutUploadProgress.done = 0;
+      takeoutUploadProgress.total = all.length;
+      takeoutImportResult.value = null;
+
+      const BATCH = 200;
+      for (let i = 0; i < all.length; i += BATCH) {
+        const batch = all.slice(i, i + BATCH);
+        const fd = new FormData();
+        batch.forEach(f => fd.append('files', f));
+        await fetch('/api/takeout/upload', { method: 'POST', body: fd });
+        takeoutUploadProgress.done = Math.min(i + BATCH, all.length);
+      }
+
+      takeoutUploading.value = false;
+      evt.target.value = '';
+      await fetchTakeoutStatus();
+      showToast(`${all.length} JSON caricati sul server.`, 'success');
+    }
+
+    async function runTakeoutImport() {
+      takeoutImporting.value = true;
+      takeoutImportResult.value = null;
+      const data = await apiPost('/api/takeout/import', {});
+      takeoutImporting.value = false;
+      if (data) {
+        takeoutImportResult.value = data;
+        if (data.updated > 0) showToast(`${data.updated} foto aggiornate con coordinate GPS.`, 'success');
+      }
+    }
     const settingsForm = reactive({
       ai_engine: 'gemini',
       gemini_api_key: '',
@@ -1687,6 +1782,7 @@ createApp({
 
     async function openSettings() {
       testResult.value = null;
+      fetchTakeoutStatus();
       const data = await apiGet('/api/settings');
       if (data) {
         if (data.ai_engine)            settingsForm.ai_engine = data.ai_engine;
@@ -1858,6 +1954,8 @@ createApp({
       browserRoot, browserCurrentPath, browserDirs, browserLoading, browserError, browserBreadcrumbs, browseTo, selectBrowserPath,
       showSettingsModal, savingSettings, testingAi, testResult, settingsForm,
       purgingTrash, purgeResult, purgeTrash,
+      takeoutUploading, takeoutImporting, takeoutJsonCount, takeoutImportResult, takeoutUploadProgress,
+      onTakeoutFilesSelected, runTakeoutImport,
       openSettings, saveSettings, testAiConnection,
     };
   }
