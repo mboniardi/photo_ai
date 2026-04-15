@@ -530,7 +530,7 @@
         >
           <span>🖼</span>
           <span class="sidebar-item-name">All photos</span>
-          <span class="sidebar-badge">{{ totalPhotos }}</span>
+          <span v-if="totalPhotos > 0" class="sidebar-badge">{{ totalPhotos }}</span>
         </div>
       </div>
 
@@ -549,7 +549,7 @@
             <button class="folder-action-btn" @click="rescanFolder(folder)" title="Rescan">↺</button>
             <button class="folder-action-btn" @click="deleteFolder(folder)" title="Delete">✕</button>
           </div>
-          <span class="sidebar-badge">{{ folder.photo_count || 0 }}</span>
+          <span v-if="(folder.photo_count || 0) > 0" class="sidebar-badge">{{ folder.photo_count }}</span>
         </div>
 
         <button class="sidebar-add-btn" @click="openAddFolder">
@@ -1365,6 +1365,7 @@ createApp({
       const ids = [...selectedIds.value];
       await Promise.all(ids.map(id => apiPut(`/api/photos/${id}`, { is_trash: 1 })));
       clearSelection();
+      await loadFolders();
       loadPhotos(true);
     }
 

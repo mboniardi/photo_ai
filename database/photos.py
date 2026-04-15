@@ -149,6 +149,7 @@ def count_photos(
     *,
     folder_path: Optional[str] = None,
     analyzed_only: Optional[bool] = None,
+    is_trash: Optional[bool] = None,
 ) -> int:
     """Conta foto con filtri opzionali."""
     conditions = []
@@ -161,6 +162,10 @@ def count_photos(
         conditions.append("analyzed_at IS NOT NULL")
     if analyzed_only is False:
         conditions.append("analyzed_at IS NULL")
+    if is_trash is True:
+        conditions.append("is_trash = 1")
+    elif is_trash is False:
+        conditions.append("(is_trash = 0 OR is_trash IS NULL)")
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 

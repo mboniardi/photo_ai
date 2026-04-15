@@ -41,10 +41,21 @@ def get_folder_by_path(db_path: Optional[str], folder_path: str):
 
 
 def get_all_folders(db_path: Optional[str] = None) -> list:
-    """Ritorna tutte le cartelle ordinate per folder_path."""
+    """Ritorna tutte le cartelle con conteggio live escludendo foto trashate."""
     with get_db(db_path) as conn:
         return conn.execute(
-            "SELECT * FROM folders ORDER BY folder_path"
+            """
+            SELECT f.*,
+                   COALESCE(p.live_count, 0) AS photo_count
+            FROM folders f
+            LEFT JOIN (
+                SELECT folder_path, COUNT(*) AS live_count
+                FROM photos
+                WHERE is_trash = 0 OR is_trash IS NULL
+                GROUP BY folder_path
+            ) p ON p.folder_path = f.folder_path
+            ORDER BY f.folder_path
+            """
         ).fetchall()
 
 

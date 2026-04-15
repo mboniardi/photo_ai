@@ -60,9 +60,9 @@ def scan_and_add_folder(req: ScanRequest):
             auto_analyze=req.auto_analyze,
         )
     result = scan_folder(req.folder_path, db_path=config.LOCAL_DB)
-    total    = count_photos(config.LOCAL_DB, folder_path=req.folder_path)
+    total    = count_photos(config.LOCAL_DB, folder_path=req.folder_path, is_trash=False)
     analyzed = count_photos(config.LOCAL_DB, folder_path=req.folder_path,
-                            analyzed_only=True)
+                            analyzed_only=True, is_trash=False)
     update_folder_counts(config.LOCAL_DB, req.folder_path,
                          photo_count=total, analyzed_count=analyzed)
     queued = 0
@@ -82,9 +82,9 @@ def rescan_folder(req: FolderDeleteRequest):
         raise HTTPException(status_code=400,
                             detail=f"Path non trovato: {req.folder_path}")
     result = scan_folder(req.folder_path, db_path=config.LOCAL_DB)
-    total    = count_photos(config.LOCAL_DB, folder_path=req.folder_path)
+    total    = count_photos(config.LOCAL_DB, folder_path=req.folder_path, is_trash=False)
     analyzed = count_photos(config.LOCAL_DB, folder_path=req.folder_path,
-                            analyzed_only=True)
+                            analyzed_only=True, is_trash=False)
     update_folder_counts(config.LOCAL_DB, req.folder_path,
                          photo_count=total, analyzed_count=analyzed)
     return {"new": result.new, "skipped": result.skipped, "errors": result.errors}
