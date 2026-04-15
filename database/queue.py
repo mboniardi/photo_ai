@@ -109,6 +109,15 @@ def get_queue_counts(db_path: Optional[str] = None) -> dict:
     return counts
 
 
+def retry_errors(db_path: Optional[str] = None) -> int:
+    """Rimette a 'pending' tutti gli item in errore, azzerando i tentativi. Ritorna il numero di item."""
+    with get_db(db_path) as conn:
+        cur = conn.execute(
+            "UPDATE analysis_queue SET status='pending', attempts=0, error_msg=NULL WHERE status='error'"
+        )
+        return cur.rowcount
+
+
 def remove_queue_item(db_path: Optional[str], queue_id: int) -> None:
     """Rimuove un item dalla coda (solo se pending)."""
     with get_db(db_path) as conn:

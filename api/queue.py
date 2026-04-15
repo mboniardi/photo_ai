@@ -5,7 +5,7 @@ from typing import Optional
 
 from database.queue import (
     add_to_queue, get_queue_counts, remove_queue_item,
-    get_next_pending,
+    get_next_pending, retry_errors,
 )
 from database.photos import get_photos, count_photos
 import config
@@ -81,6 +81,13 @@ def resume_queue():
     if _worker:
         _worker.resume()
     return {"ok": True}
+
+
+@router.post("/retry-errors")
+def retry_error_items():
+    """Rimette in pending tutti gli item in errore."""
+    count = retry_errors(config.LOCAL_DB)
+    return {"ok": True, "retried": count}
 
 
 @router.delete("/{queue_id}")
