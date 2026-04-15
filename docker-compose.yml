@@ -10,5 +10,7 @@ services:
     volumes:
       # NAS photos — read-only inside the container
       - /mnt/nas:/mnt/nas:ro
+      # Data dir on NAS (DB backup, backups) — writable override on the ro mount
+      - /mnt/nas/photo_ai_data:/mnt/nas/photo_ai_data
       # Persistent data: SQLite DB, authorized_emails.txt, backups
       - /opt/photo_ai/data:/opt/photo_ai/data
