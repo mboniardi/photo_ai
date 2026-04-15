@@ -51,10 +51,20 @@ def scan_folder(folder_path: str, db_path: Optional[str] = None) -> ScanResult:
     """
     result = ScanResult()
 
-    # Indice veloce dei file già presenti: file_path → (file_size, exif_date, photo_id, is_trash)
+    # Indice veloce dei file già presenti: file_path → (file_size, exif_date, photo_id, is_trash, stored_folder)
+    # Cerca per prefisso del file_path (non per folder_path esatto) così cattura anche foto
+    # già indicizzate sotto una sottocartella aggiunta in precedenza separatamente.
+    from database.db import get_db
+    prefix = folder_path.rstrip("/") + "/"
+    with get_db(db_path) as _conn:
+        _rows = _conn.execute(
+            "SELECT file_path, file_size, exif_date, id, is_trash, folder_path AS stored_folder "
+            "FROM photos WHERE file_path LIKE ?",
+            (prefix + "%",),
+        ).fetchall()
     existing = {
-        row["file_path"]: (row["file_size"], row["exif_date"], row["id"], row["is_trash"])
-        for row in get_photos(db_path, folder_path=folder_path, limit=100000)
+        row["file_path"]: (row["file_size"], row["exif_date"], row["id"], row["is_trash"], row["stored_folder"])
+        for row in _rows
     }
 
     for dirpath, _, filenames in os.walk(folder_path, followlinks=True):
@@ -71,20 +81,23 @@ def scan_folder(folder_path: str, db_path: Optional[str] = None) -> ScanResult:
 
                 # Deduplicazione
                 if abs_path in existing:
-                    prev_size, prev_date, photo_id, is_trash = existing[abs_path]
+                    prev_size, prev_date, photo_id, is_trash, stored_folder = existing[abs_path]
                     # Se era in trash, ripristinala come attiva
                     if is_trash:
-                        update_photo(db_path, photo_id, is_trash=0)
+                        update_photo(db_path, photo_id, is_trash=0, folder_path=folder_path)
                         result.new += 1
                         result.new_photo_ids.append(photo_id)
                         continue
-                    if prev_size == current_size and prev_date == current_date:
+                    # Aggiorna folder_path se la foto era indicizzata sotto una sottocartella diversa
+                    folder_changed = stored_folder != folder_path
+                    if prev_size == current_size and prev_date == current_date and not folder_changed:
                         result.skipped += 1
                         continue
-                    # File cambiato: aggiorna solo i campi tecnici preservando i dati utente
+                    # File cambiato o folder_path da aggiornare
                     update_photo(
                         db_path,
                         photo_id,
+                        folder_path=folder_path,
                         file_size=current_size,
                         width=meta.get("width"),
                         height=meta.get("height"),
@@ -100,8 +113,11 @@ def scan_folder(folder_path: str, db_path: Optional[str] = None) -> ScanResult:
                         longitude=meta.get("longitude"),
                         location_source="exif" if meta.get("latitude") else None,
                     )
-                    result.new += 1
-                    result.new_photo_ids.append(photo_id)
+                    if folder_changed:
+                        result.new += 1
+                        result.new_photo_ids.append(photo_id)
+                    else:
+                        result.skipped += 1
                     continue
 
                 photo_id = insert_photo(
