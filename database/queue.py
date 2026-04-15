@@ -11,8 +11,14 @@ def add_to_queue(
     photo_id: int,
     priority: int = 5,
 ) -> int:
-    """Aggiunge una foto alla coda. Ritorna l'id dell'item."""
+    """Aggiunge una foto alla coda. Se già presente (pending/processing), non duplica. Ritorna l'id dell'item."""
     with get_db(db_path) as conn:
+        existing = conn.execute(
+            "SELECT id FROM analysis_queue WHERE photo_id = ? AND status IN ('pending', 'processing')",
+            (photo_id,),
+        ).fetchone()
+        if existing:
+            return existing["id"]
         cur = conn.execute(
             """
             INSERT INTO analysis_queue (photo_id, priority, status)
