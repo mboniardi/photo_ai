@@ -181,6 +181,7 @@ write_files:
       NAS_CIFS_USER=$NAS_USER
       NAS_CIFS_PASSWORD=$NAS_PASSWORD
       APP_PORT=$APP_PORT
+      EXCLUDED_EXTS=$EXCLUDED_EXTS
 
   - path: /etc/nas-credentials
     permissions: '0600'

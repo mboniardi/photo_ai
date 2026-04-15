@@ -33,6 +33,7 @@ $GOOGLE_CLIENT_ID     = "YOUR_CLIENT_ID.apps.googleusercontent.com"
 $GOOGLE_CLIENT_SECRET = "CHANGE_ME"
 $GEMINI_API_KEY       = "CHANGE_ME"
 $AUTHORIZED_EMAILS    = @("your@gmail.com")
+$EXCLUDED_EXTS        = ".cr3"              # estensioni da escludere dalla scansione (es. ".cr3,.nef")
 
 # ── VM console password (for SSH/console access during testing) ──
 $CONSOLE_PASSWD       = "CHANGE_ME"
