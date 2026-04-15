@@ -162,6 +162,12 @@ class QueueWorker:
                                     error_msg=str(e)[:500])
             else:
                 update_queue_status(self._db_path, qid, "pending")
+                # Backoff esponenziale su errori temporanei (503, 429)
+                err_str = str(e)
+                if "503" in err_str or "429" in err_str:
+                    delay = 30 * (2 ** (current["attempts"] - 1))  # 30s, 60s
+                    logger.info("Backoff %ss per errore temporaneo (qid=%s)", delay, qid)
+                    await asyncio.sleep(delay)
 
         finally:
             self.current_photo_name = None
