@@ -82,13 +82,16 @@ def _read_jpeg(path: str) -> dict:
     except Exception:
         return meta  # JPEG senza EXIF
 
+    ifd0 = exif_data.get("0th", {})
+
+    # Orientamento
+    orientation_val = ifd0.get(piexif.ImageIFD.Orientation)
+    if orientation_val is not None:
+        meta["exif_orientation"] = int(orientation_val)
+
     # Camera
-    meta["camera_make"] = _decode(
-        exif_data.get("0th", {}).get(piexif.ImageIFD.Make)
-    )
-    meta["camera_model"] = _decode(
-        exif_data.get("0th", {}).get(piexif.ImageIFD.Model)
-    )
+    meta["camera_make"] = _decode(ifd0.get(piexif.ImageIFD.Make))
+    meta["camera_model"] = _decode(ifd0.get(piexif.ImageIFD.Model))
 
     exif = exif_data.get("Exif", {})
 
@@ -128,6 +131,7 @@ def _read_jpeg(path: str) -> dict:
         meta["latitude"] = dms_to_decimal(lat_dms, lat_ref)
         meta["longitude"] = dms_to_decimal(lon_dms, lon_ref)
 
+    _apply_orientation_to_dims(meta)
     return meta
 
 
@@ -149,6 +153,10 @@ def _read_heic(path: str) -> dict:
 
             from PIL.ExifTags import TAGS, GPSTAGS
             tag_map = {v: k for k, v in TAGS.items()}
+
+            orientation_tag = tag_map.get("Orientation")
+            if orientation_tag and exif_data.get(orientation_tag) is not None:
+                meta["exif_orientation"] = int(exif_data[orientation_tag])
 
             make_tag = tag_map.get("Make")
             model_tag = tag_map.get("Model")
@@ -195,6 +203,8 @@ def _read_heic(path: str) -> dict:
                 if lat is not None:
                     meta["latitude"] = lat
                     meta["longitude"] = lon
+
+        _apply_orientation_to_dims(meta)
     except Exception:
         pass
 
@@ -262,10 +272,24 @@ def _read_generic(path: str) -> dict:
 
 # ── Helpers privati ───────────────────────────────────────────────
 
+# Orientazioni EXIF che implicano swap larghezza/altezza
+_SWAP_ORIENTATIONS = {5, 6, 7, 8}
+
+
+def _apply_orientation_to_dims(meta: dict) -> None:
+    """
+    Se exif_orientation richiede una rotazione di 90°/270°,
+    scambia width e height in modo che il DB memorizzi le dimensioni logiche.
+    """
+    if meta.get("exif_orientation") in _SWAP_ORIENTATIONS:
+        meta["width"], meta["height"] = meta["height"], meta["width"]
+
+
 def _empty_meta() -> dict:
     """Dizionario con tutti i campi EXIF a None."""
     return {
         "width": None, "height": None,
+        "exif_orientation": None,
         "exif_date": None,
         "camera_make": None, "camera_model": None, "lens_model": None,
         "focal_length": None, "aperture": None,

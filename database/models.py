@@ -29,6 +29,7 @@ def init_db(db_path: Optional[str] = None) -> None:
               exif_date        TEXT,
               width            INTEGER,
               height           INTEGER,
+              exif_orientation INTEGER,
               file_size        INTEGER,
               camera_make      TEXT,
               camera_model     TEXT,

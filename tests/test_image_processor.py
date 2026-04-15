@@ -167,3 +167,43 @@ class TestGenerateThumbnail:
         result = generate_thumbnail(path, size=400)
         img = Image.open(io.BytesIO(result))
         assert img.size == (100, 80)
+
+    def test_orientation_6_corrected(self, tmp_path):
+        """JPEG con Orientation=6 (rotate 90° CW): thumbnail deve essere portrait."""
+        import piexif
+        from services.image_processor import generate_thumbnail
+        # Pixel grezzi: 200×100 (landscape). Con Orientation=6 la foto è portrait.
+        path = str(tmp_path / "portrait.jpg")
+        Image.new("RGB", (200, 100), (200, 100, 50)).save(path, "JPEG")
+        exif_bytes = piexif.dump({"0th": {piexif.ImageIFD.Orientation: 6}})
+        piexif.insert(exif_bytes, path)
+
+        result = generate_thumbnail(path)
+        out = Image.open(io.BytesIO(result))
+        assert out.height > out.width, (
+            f"Atteso portrait (h>w), ottenuto {out.size}"
+        )
+
+    def test_orientation_8_corrected(self, tmp_path):
+        """JPEG con Orientation=8 (rotate 90° CCW): thumbnail deve essere portrait."""
+        import piexif
+        from services.image_processor import generate_thumbnail
+        path = str(tmp_path / "portrait8.jpg")
+        Image.new("RGB", (200, 100), (50, 100, 200)).save(path, "JPEG")
+        exif_bytes = piexif.dump({"0th": {piexif.ImageIFD.Orientation: 8}})
+        piexif.insert(exif_bytes, path)
+
+        result = generate_thumbnail(path)
+        out = Image.open(io.BytesIO(result))
+        assert out.height > out.width, (
+            f"Atteso portrait (h>w), ottenuto {out.size}"
+        )
+
+    def test_no_orientation_tag_unchanged(self, tmp_path):
+        """JPEG senza tag Orientation: dimensioni invariate."""
+        from services.image_processor import generate_thumbnail
+        path = str(tmp_path / "normal.jpg")
+        Image.new("RGB", (200, 100)).save(path, "JPEG")
+        result = generate_thumbnail(path, size=400)
+        out = Image.open(io.BytesIO(result))
+        assert out.width > out.height  # landscape invariato

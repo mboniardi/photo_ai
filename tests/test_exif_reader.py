@@ -182,6 +182,80 @@ class TestReadExifPng:
         assert result.get("latitude") is None
 
 
+class TestExifOrientation:
+    """Il tag Orientation deve essere letto e le dimensioni corrette per swap."""
+
+    def _jpeg_with_orientation(self, tmp_path, width: int, height: int, orientation: int) -> str:
+        path = str(tmp_path / f"orient_{orientation}.jpg")
+        img = Image.new("RGB", (width, height), (100, 150, 200))
+        buf = io.BytesIO()
+        exif_bytes = piexif.dump({"0th": {piexif.ImageIFD.Orientation: orientation}})
+        img.save(buf, "JPEG", exif=exif_bytes)
+        with open(path, "wb") as f:
+            f.write(buf.getvalue())
+        return path
+
+    def test_reads_orientation_tag(self, tmp_path):
+        from services.exif_reader import read_exif
+        path = self._jpeg_with_orientation(tmp_path, 200, 100, 6)
+        result = read_exif(path)
+        assert result["exif_orientation"] == 6
+
+    def test_no_orientation_is_none(self, tmp_path):
+        from services.exif_reader import read_exif
+        path = save_jpeg(tmp_path, make_jpeg_with_exif(width=200, height=100))
+        result = read_exif(path)
+        assert result["exif_orientation"] is None
+
+    def test_orientation_6_swaps_dimensions(self, tmp_path):
+        """Orientation=6 (ruota 90° CW): dimensioni logiche = (100, 200)."""
+        from services.exif_reader import read_exif
+        path = self._jpeg_with_orientation(tmp_path, 200, 100, 6)
+        result = read_exif(path)
+        assert result["width"] == 100
+        assert result["height"] == 200
+
+    def test_orientation_8_swaps_dimensions(self, tmp_path):
+        """Orientation=8 (ruota 90° CCW): dimensioni logiche = (100, 200)."""
+        from services.exif_reader import read_exif
+        path = self._jpeg_with_orientation(tmp_path, 200, 100, 8)
+        result = read_exif(path)
+        assert result["width"] == 100
+        assert result["height"] == 200
+
+    def test_orientation_5_swaps_dimensions(self, tmp_path):
+        """Orientation=5 (transpose): dimensioni logiche = (100, 200)."""
+        from services.exif_reader import read_exif
+        path = self._jpeg_with_orientation(tmp_path, 200, 100, 5)
+        result = read_exif(path)
+        assert result["width"] == 100
+        assert result["height"] == 200
+
+    def test_orientation_7_swaps_dimensions(self, tmp_path):
+        """Orientation=7 (transverse): dimensioni logiche = (100, 200)."""
+        from services.exif_reader import read_exif
+        path = self._jpeg_with_orientation(tmp_path, 200, 100, 7)
+        result = read_exif(path)
+        assert result["width"] == 100
+        assert result["height"] == 200
+
+    def test_orientation_3_no_swap(self, tmp_path):
+        """Orientation=3 (180°): dimensioni invariate."""
+        from services.exif_reader import read_exif
+        path = self._jpeg_with_orientation(tmp_path, 200, 100, 3)
+        result = read_exif(path)
+        assert result["width"] == 200
+        assert result["height"] == 100
+
+    def test_orientation_1_no_swap(self, tmp_path):
+        """Orientation=1 (normale): dimensioni invariate."""
+        from services.exif_reader import read_exif
+        path = self._jpeg_with_orientation(tmp_path, 200, 100, 1)
+        result = read_exif(path)
+        assert result["width"] == 200
+        assert result["height"] == 100
+
+
 class TestGpsConversion:
     """Test della funzione di conversione DMS → decimale."""
     def test_decimal_degrees_positive(self):

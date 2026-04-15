@@ -12,7 +12,7 @@ import io
 import os
 from typing import Optional
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 import config
 
@@ -84,7 +84,7 @@ def prepare_for_ai(
     quality = jpeg_quality or config.JPEG_QUALITY
     target_kb = target_max_kb or config.TARGET_MAX_KB
 
-    img = open_any_format(image_path)
+    img = ImageOps.exif_transpose(open_any_format(image_path))
 
     # Ridimensiona solo se necessario (thumbnail non fa upscale)
     if max(img.size) > side:
@@ -120,7 +120,7 @@ def generate_thumbnail(
     thumb_size = size or config.THUMBNAIL_SIZE
     thumb_quality = quality or config.THUMBNAIL_QUALITY
 
-    img = open_any_format(image_path)
+    img = ImageOps.exif_transpose(open_any_format(image_path))
 
     # thumbnail() di PIL non fa upscale
     img.thumbnail((thumb_size, thumb_size), Image.LANCZOS)

@@ -24,6 +24,7 @@ def insert_photo(
     file_size: Optional[int] = None,
     width: Optional[int] = None,
     height: Optional[int] = None,
+    exif_orientation: Optional[int] = None,
     exif_date: Optional[str] = None,
     camera_make: Optional[str] = None,
     camera_model: Optional[str] = None,
@@ -43,15 +44,15 @@ def insert_photo(
             """
             INSERT INTO photos (
                 file_path, folder_path, filename, format, file_size,
-                width, height, exif_date,
+                width, height, exif_orientation, exif_date,
                 camera_make, camera_model, lens_model,
                 focal_length, aperture, shutter_speed, iso,
                 latitude, longitude, location_name, location_source
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 file_path, folder_path, filename, format, file_size,
-                width, height, exif_date,
+                width, height, exif_orientation, exif_date,
                 camera_make, camera_model, lens_model,
                 focal_length, aperture, shutter_speed, iso,
                 latitude, longitude, location_name, location_source,

@@ -156,6 +156,20 @@ class TestGetPhotoIdByPath:
         assert get_photo_id_by_path(tmp_db, "/nonexistent/path.jpg") is None
 
 
+class TestExifOrientationInDb:
+    def test_insert_and_read_orientation(self, tmp_db):
+        from database.photos import insert_photo, get_photo_by_id
+        pid = insert_photo(tmp_db, **{**PHOTO_DEFAULTS, "exif_orientation": 6})
+        photo = get_photo_by_id(tmp_db, pid)
+        assert photo["exif_orientation"] == 6
+
+    def test_insert_without_orientation_is_null(self, tmp_db):
+        from database.photos import insert_photo, get_photo_by_id
+        pid = insert_photo(tmp_db, **PHOTO_DEFAULTS)
+        photo = get_photo_by_id(tmp_db, pid)
+        assert photo["exif_orientation"] is None
+
+
 class TestCountPhotos:
     def test_count_all(self, tmp_db):
         from database.photos import insert_photo, count_photos
