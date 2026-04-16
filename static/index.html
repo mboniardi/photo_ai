@@ -1640,7 +1640,7 @@ createApp({
 
     function descSnippet(photo) {
       const d = photo.user_description || photo.description || '';
-      return d.slice(0, 80) || photo.filename;
+      return d.slice(0, 200) || photo.filename;
     }
 
     /* FOLDERS MANAGEMENT */
