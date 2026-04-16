@@ -31,41 +31,6 @@ class GeminiEngine(AIEngine):
             raise ValueError("API key Gemini obbligatoria")
         self._api_key = api_key
         self._client = genai.Client(api_key=api_key)
-        self._embed_model: str | None = None  # discovered lazily
-
-    async def _resolve_embed_model(self) -> str | None:
-        """Trova il primo modello embedding disponibile per questa API key."""
-        if self._embed_model is not None:
-            return self._embed_model
-        configured = config.GEMINI_EMBED_MODEL
-        candidates = list(dict.fromkeys(filter(None, [
-            configured,
-            "gemini-embedding-exp-03-07",
-            "text-embedding-004",
-            "embedding-001",
-        ])))
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(
-                    "https://generativelanguage.googleapis.com/v1beta/models",
-                    params={"key": self._api_key},
-                )
-                if resp.status_code == 200:
-                    available = {
-                        m["name"].removeprefix("models/")
-                        for m in resp.json().get("models", [])
-                        if any("embedContent" in sm for sm in m.get("supportedGenerationMethods", []))
-                    }
-                    for c in candidates:
-                        if c.removeprefix("models/") in available:
-                            self._embed_model = c.removeprefix("models/")
-                            logger.info("Embed model selezionato: %s", self._embed_model)
-                            return self._embed_model
-        except Exception as exc:
-            logger.warning("Impossibile listare i modelli Gemini: %s", exc)
-        # fallback: prova il primo candidato senza verifica
-        self._embed_model = candidates[0].removeprefix("models/") if candidates else None
-        return self._embed_model
 
     async def analyze(
         self,
@@ -99,9 +64,9 @@ class GeminiEngine(AIEngine):
         )
 
     async def embed(self, text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> list:
-        model = await self._resolve_embed_model()
-        if not model:
+        if not config.GEMINI_EMBED_MODEL:
             return []
+        model = config.GEMINI_EMBED_MODEL.removeprefix("models/")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent"
         payload = {
             "content": {"parts": [{"text": text}]},
