@@ -74,7 +74,7 @@ Write-Host "  New VM name: $VM_NAME"
 # ═══════════════════════════════════════════════════════════════════
 Write-Host "`n[Phase 2] Ubuntu cloud image" -ForegroundColor Cyan
 
-$IMG_URL   = "https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-amd64.img"
+$IMG_URL   = "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
 $CACHE_DIR = "$PSScriptRoot\cache"
 $VMS_DIR   = "$PSScriptRoot\vms"
 
@@ -191,7 +191,6 @@ write_files:
       password=$NAS_PASSWORD
 
 package_update: true
-package_upgrade: true
 packages:
   - openssh-server
   - cifs-utils

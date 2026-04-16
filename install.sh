@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — Photo AI Manager — Docker setup on Ubuntu 22.04
+# install.sh — Photo AI Manager — Docker setup on Ubuntu 24.04+
 # Run as root on the target VM after git clone.
 set -euo pipefail
 
