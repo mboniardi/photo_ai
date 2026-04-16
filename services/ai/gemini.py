@@ -64,7 +64,7 @@ class GeminiEngine(AIEngine):
         if not config.GEMINI_EMBED_MODEL:
             return []
         model = config.GEMINI_EMBED_MODEL.lstrip("models/")
-        url = f"https://generativelanguage.googleapis.com/v1/models/{model}:embedContent"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent"
         payload = {
             "model": f"models/{model}",
             "content": {"parts": [{"text": text}]},
