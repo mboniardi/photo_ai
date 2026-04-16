@@ -26,6 +26,11 @@ class GeminiEngine(AIEngine):
         if not api_key:
             raise ValueError("API key Gemini obbligatoria")
         self._client = genai.Client(api_key=api_key)
+        # embed_content richiede v1, non v1beta (default del SDK)
+        self._embed_client = genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(api_version="v1"),
+        )
 
     async def analyze(
         self,
@@ -64,7 +69,7 @@ class GeminiEngine(AIEngine):
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(
             None,
-            lambda: self._client.models.embed_content(
+            lambda: self._embed_client.models.embed_content(
                 model=config.GEMINI_EMBED_MODEL,
                 contents=text,
                 config=types.EmbedContentConfig(task_type=task_type),
