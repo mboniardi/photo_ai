@@ -13,9 +13,6 @@ ALLOWED_KEYS = {
     "gemini_api_key",
     "gemini_paid_api_key",
     "groq_api_key",
-    "ollama_base_url",
-    "ollama_vision_model",
-    "ollama_embed_model",
     "analysis_rpm_limit",
     "backup_interval_min",
     "backup_retention",
@@ -60,11 +57,7 @@ def test_ai_connection():
             )
             return {"ok": True, "message": f"Groq ({config.GROQ_MODEL}) connesso correttamente"}
         else:
-            import httpx
-            base_url = get_setting(config.LOCAL_DB, "ollama_base_url") or "http://localhost:11434"
-            r = httpx.get(f"{base_url}/api/tags", timeout=5)
-            r.raise_for_status()
-            return {"ok": True, "message": f"Ollama raggiungibile su {base_url}"}
+            raise ValueError(f"Engine sconosciuto: {engine_name}")
     except Exception as exc:
         logger.error("test-ai failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail=str(exc))
@@ -80,8 +73,7 @@ async def put_settings(body: dict):
         set_setting(config.LOCAL_DB, key=key, value=str(value))
 
     # Se cambia il motore AI o la sua chiave, ricrea e riavvia il worker
-    engine_keys = {"ai_engine", "gemini_api_key", "gemini_paid_api_key", "groq_api_key",
-                   "ollama_base_url", "ollama_vision_model", "ollama_embed_model"}
+    engine_keys = {"ai_engine", "gemini_api_key", "gemini_paid_api_key", "groq_api_key"}
     if body.keys() & engine_keys:
         await _restart_worker()
 
@@ -99,33 +91,27 @@ async def _restart_worker():
 
     engine_name = get_setting(config.LOCAL_DB, "ai_engine") or "gemini"
     try:
+        from services.ai.gemini import GeminiEngine
         if engine_name in ("gemini", "gemini_paid"):
-            from services.ai.gemini import GeminiEngine
             if engine_name == "gemini_paid":
                 api_key = get_setting(config.LOCAL_DB, "gemini_paid_api_key") or config.GEMINI_PAID_API_KEY
             else:
                 api_key = get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
             engine = GeminiEngine(api_key=api_key)
-        elif engine_name == "groq":
+        else:  # groq
             from services.ai.groq_engine import GroqEngine
             api_key = get_setting(config.LOCAL_DB, "groq_api_key") or config.GROQ_API_KEY
             engine = GroqEngine(api_key=api_key)
-        else:
-            from services.ai.ollama import OllamaEngine
-            base_url = get_setting(config.LOCAL_DB, "ollama_base_url") or "http://localhost:11434"
-            vision_model = get_setting(config.LOCAL_DB, "ollama_vision_model") or "llava"
-            embed_model  = get_setting(config.LOCAL_DB, "ollama_embed_model") or "nomic-embed-text"
-            engine = OllamaEngine(base_url=base_url, vision_model=vision_model, embed_model=embed_model)
 
         default_rpm = config.GEMINI_PAID_RPM_LIMIT if engine_name == "gemini_paid" else config.ANALYSIS_RPM_LIMIT
         rpm = int(get_setting(config.LOCAL_DB, "analysis_rpm_limit") or default_rpm)
 
         embed_engine = None
-        if engine_name != "ollama":
-            from services.ai.ollama import OllamaEngine as _OllamaEngine
-            _base_url    = get_setting(config.LOCAL_DB, "ollama_base_url")  or "http://localhost:11434"
-            _embed_model = get_setting(config.LOCAL_DB, "ollama_embed_model") or "nomic-embed-text"
-            embed_engine = _OllamaEngine(base_url=_base_url, embed_model=_embed_model)
+        if engine_name == "groq":
+            _gem_key = (get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
+                        or get_setting(config.LOCAL_DB, "gemini_paid_api_key") or config.GEMINI_PAID_API_KEY)
+            if _gem_key:
+                embed_engine = GeminiEngine(api_key=_gem_key)
 
         worker = QueueWorker(engine=engine, db_path=config.LOCAL_DB, rpm_limit=rpm,
                              embed_engine=embed_engine)

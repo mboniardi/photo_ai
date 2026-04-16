@@ -17,14 +17,14 @@ class TestGetSetting:
 class TestSetSetting:
     def test_set_and_get(self, tmp_db):
         from database.settings import set_setting, get_setting
-        set_setting(tmp_db, "ai_engine", "ollama")
-        assert get_setting(tmp_db, "ai_engine") == "ollama"
+        set_setting(tmp_db, "ai_engine", "groq")
+        assert get_setting(tmp_db, "ai_engine") == "groq"
 
     def test_upsert_updates_existing(self, tmp_db):
         from database.settings import set_setting, get_setting
         set_setting(tmp_db, "ai_engine", "gemini")
-        set_setting(tmp_db, "ai_engine", "ollama")
-        assert get_setting(tmp_db, "ai_engine") == "ollama"
+        set_setting(tmp_db, "ai_engine", "groq")
+        assert get_setting(tmp_db, "ai_engine") == "groq"
 
 
 class TestGetAllSettings:

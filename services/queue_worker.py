@@ -44,7 +44,7 @@ class QueueWorker:
         self._engine        = engine
         self._embed_engine  = embed_engine  # se presente, usato solo per embedding
         self._db_path  = db_path
-        self._rpm      = rpm_limit  # None = nessun limite (Ollama)
+        self._rpm      = rpm_limit  # None = nessun limite
         self.is_running = False
         self.is_paused  = False
         self._task: Optional[asyncio.Task] = None

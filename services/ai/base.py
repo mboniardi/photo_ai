@@ -1,6 +1,6 @@
 """
 Interfaccia astratta per i motori AI (§6.5, §6.6).
-Gemini e Ollama implementano AIEngine.
+GeminiEngine e GroqEngine implementano AIEngine.
 PhotoAnalysis è il dataclass di ritorno da analyze().
 """
 from abc import ABC, abstractmethod
@@ -19,7 +19,7 @@ class PhotoAnalysis:
     colors: list                    # colori dominanti
     strengths: str
     weaknesses: Optional[str]
-    ai_engine: str                  # 'gemini' | 'ollama'
+    ai_engine: str                  # 'gemini' | 'gemini_paid' | 'groq'
 
     # Campi facoltativi (riconoscimento luogo)
     location_name: Optional[str] = None
@@ -40,7 +40,7 @@ class AIEngine(ABC):
     """
     Interfaccia astratta per motori AI di analisi fotografica.
     Implementata da GeminiEngine (services/ai/gemini.py)
-    e OllamaEngine (services/ai/ollama.py).
+    e GroqEngine (services/ai/groq_engine.py).
     """
 
     @property

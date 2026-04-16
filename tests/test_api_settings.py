@@ -31,9 +31,9 @@ class TestGetSettings:
 
 class TestPutSettings:
     def test_saves_ai_engine(self, client):
-        client.put("/api/settings", json={"ai_engine": "ollama"})
+        client.put("/api/settings", json={"ai_engine": "groq"})
         data = client.get("/api/settings").json()
-        assert data.get("ai_engine") == "ollama"
+        assert data.get("ai_engine") == "groq"
 
     def test_saves_multiple_keys(self, client):
         client.put("/api/settings", json={

@@ -1087,7 +1087,6 @@
             <option value="gemini">Gemini free (15 RPM)</option>
             <option value="gemini_paid">Gemini paid (alta quota)</option>
             <option value="groq">Groq (Llama 4)</option>
-            <option value="ollama">Ollama (local)</option>
           </select>
         </div>
 
@@ -1112,21 +1111,6 @@
           </div>
         </template>
 
-        <template v-if="settingsForm.ai_engine === 'ollama'">
-          <div class="form-group">
-            <label class="form-label">Ollama base URL</label>
-            <input class="form-input" v-model="settingsForm.ollama_base_url" placeholder="http://localhost:11434" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Vision model</label>
-            <input class="form-input" v-model="settingsForm.ollama_vision_model" placeholder="llava" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Embed model</label>
-            <input class="form-input" v-model="settingsForm.ollama_embed_model" placeholder="nomic-embed-text" />
-          </div>
-        </template>
-
         <div class="form-group">
           <button class="toolbar-btn" @click="testAiConnection" :disabled="testingAi" style="width:fit-content">
             {{ testingAi ? 'Testing…' : '🔌 Test connection' }}
@@ -1141,7 +1125,7 @@
         <div class="form-group">
           <label class="form-label">Ricerca semantica — embedding</label>
           <div style="font-size:12px; color:var(--muted); margin-bottom:8px">
-            Gli embedding vengono generati da Ollama (locale). Rigenera dopo aver analizzato nuove foto o aver cambiato modello embed.
+            Gli embedding vengono generati da Gemini (text-embedding-004). Rigenera dopo aver analizzato nuove foto con un engine diverso.
           </div>
           <button class="toolbar-btn" @click="startReembed" :disabled="reembedRunning" style="width:fit-content">
             {{ reembedRunning ? `Indicizzazione… ${reembedDone}/${reembedTotal}` : '🔍 Re-indicizza embedding' }}
@@ -1806,9 +1790,6 @@ createApp({
       gemini_api_key: '',
       gemini_paid_api_key: '',
       groq_api_key: '',
-      ollama_base_url: 'http://localhost:11434',
-      ollama_vision_model: 'llava',
-      ollama_embed_model: 'nomic-embed-text',
       analysis_rpm_limit: 10,
     });
 
@@ -1821,9 +1802,6 @@ createApp({
         if (data.gemini_api_key)       settingsForm.gemini_api_key = data.gemini_api_key;
         if (data.gemini_paid_api_key)  settingsForm.gemini_paid_api_key = data.gemini_paid_api_key;
         if (data.groq_api_key)         settingsForm.groq_api_key = data.groq_api_key;
-        if (data.ollama_base_url)      settingsForm.ollama_base_url = data.ollama_base_url;
-        if (data.ollama_vision_model)  settingsForm.ollama_vision_model = data.ollama_vision_model;
-        if (data.ollama_embed_model)   settingsForm.ollama_embed_model = data.ollama_embed_model;
         if (data.analysis_rpm_limit)   settingsForm.analysis_rpm_limit = Number(data.analysis_rpm_limit);
       }
       showSettingsModal.value = true;
@@ -1843,11 +1821,6 @@ createApp({
       }
       if (settingsForm.ai_engine === 'groq' && settingsForm.groq_api_key) {
         payload.groq_api_key = settingsForm.groq_api_key;
-      }
-      if (settingsForm.ai_engine === 'ollama') {
-        payload.ollama_base_url      = settingsForm.ollama_base_url;
-        payload.ollama_vision_model  = settingsForm.ollama_vision_model;
-        payload.ollama_embed_model   = settingsForm.ollama_embed_model;
       }
       await apiPut('/api/settings', payload);
       savingSettings.value = false;
