@@ -33,6 +33,7 @@ GEMINI_EMBED_MODEL: str = os.environ.get("GEMINI_EMBED_MODEL", "")
 
 # Gemini a pagamento — stessa libreria/modello, chiave con limiti più alti
 GEMINI_PAID_API_KEY: str = os.environ.get("GEMINI_PAID_API_KEY", "")
+GEMINI_PAID_RPM_LIMIT: int = int(os.environ.get("GEMINI_PAID_RPM_LIMIT", 30))
 
 GROQ_API_KEY: str = os.environ.get("GROQ_API_KEY", "")
 GROQ_MODEL: str = os.environ.get("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")

@@ -117,7 +117,8 @@ async def _restart_worker():
             embed_model  = get_setting(config.LOCAL_DB, "ollama_embed_model") or "nomic-embed-text"
             engine = OllamaEngine(base_url=base_url, vision_model=vision_model, embed_model=embed_model)
 
-        rpm = int(get_setting(config.LOCAL_DB, "analysis_rpm_limit") or config.ANALYSIS_RPM_LIMIT)
+        default_rpm = config.GEMINI_PAID_RPM_LIMIT if engine_name == "gemini_paid" else config.ANALYSIS_RPM_LIMIT
+        rpm = int(get_setting(config.LOCAL_DB, "analysis_rpm_limit") or default_rpm)
         worker = QueueWorker(engine=engine, db_path=config.LOCAL_DB, rpm_limit=rpm)
         await worker.start()
         set_worker(worker)
