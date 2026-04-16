@@ -63,10 +63,9 @@ class GeminiEngine(AIEngine):
     async def embed(self, text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> list:
         if not config.GEMINI_EMBED_MODEL:
             return []
-        model = config.GEMINI_EMBED_MODEL.lstrip("models/")
+        model = config.GEMINI_EMBED_MODEL.removeprefix("models/")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent"
         payload = {
-            "model": f"models/{model}",
             "content": {"parts": [{"text": text}]},
             "taskType": task_type,
         }
