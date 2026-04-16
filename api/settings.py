@@ -11,6 +11,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 ALLOWED_KEYS = {
     "ai_engine",
     "gemini_api_key",
+    "gemini_paid_api_key",
     "groq_api_key",
     "ollama_base_url",
     "ollama_vision_model",
@@ -33,14 +34,19 @@ def test_ai_connection():
     """Verifica la connessione al backend AI configurato."""
     engine_name = get_setting(config.LOCAL_DB, "ai_engine") or "gemini"
     try:
-        if engine_name == "gemini":
+        if engine_name in ("gemini", "gemini_paid"):
             from google import genai
-            api_key = get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
+            if engine_name == "gemini_paid":
+                api_key = get_setting(config.LOCAL_DB, "gemini_paid_api_key") or config.GEMINI_PAID_API_KEY
+                label = "Gemini paid"
+            else:
+                api_key = get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
+                label = "Gemini free"
             if not api_key:
-                raise ValueError("GEMINI_API_KEY non configurata")
+                raise ValueError(f"{label.upper().replace(' ','_')}_API_KEY non configurata")
             client = genai.Client(api_key=api_key)
             client.models.generate_content(model=config.GEMINI_MODEL, contents=["ping"])
-            return {"ok": True, "message": f"Gemini ({config.GEMINI_MODEL}) connesso correttamente"}
+            return {"ok": True, "message": f"{label} ({config.GEMINI_MODEL}) connesso correttamente"}
         elif engine_name == "groq":
             from groq import Groq
             api_key = get_setting(config.LOCAL_DB, "groq_api_key") or config.GROQ_API_KEY
@@ -74,7 +80,7 @@ async def put_settings(body: dict):
         set_setting(config.LOCAL_DB, key=key, value=str(value))
 
     # Se cambia il motore AI o la sua chiave, ricrea e riavvia il worker
-    engine_keys = {"ai_engine", "gemini_api_key", "groq_api_key",
+    engine_keys = {"ai_engine", "gemini_api_key", "gemini_paid_api_key", "groq_api_key",
                    "ollama_base_url", "ollama_vision_model", "ollama_embed_model"}
     if body.keys() & engine_keys:
         await _restart_worker()
@@ -93,9 +99,12 @@ async def _restart_worker():
 
     engine_name = get_setting(config.LOCAL_DB, "ai_engine") or "gemini"
     try:
-        if engine_name == "gemini":
+        if engine_name in ("gemini", "gemini_paid"):
             from services.ai.gemini import GeminiEngine
-            api_key = get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
+            if engine_name == "gemini_paid":
+                api_key = get_setting(config.LOCAL_DB, "gemini_paid_api_key") or config.GEMINI_PAID_API_KEY
+            else:
+                api_key = get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
             engine = GeminiEngine(api_key=api_key)
         elif engine_name == "groq":
             from services.ai.groq_engine import GroqEngine

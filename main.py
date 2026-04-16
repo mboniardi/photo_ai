@@ -134,9 +134,12 @@ async def on_startup():
 
     engine_name = get_setting(config.LOCAL_DB, "ai_engine") or "gemini"
     try:
-        if engine_name == "gemini":
+        if engine_name in ("gemini", "gemini_paid"):
             from services.ai.gemini import GeminiEngine
-            api_key = get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
+            if engine_name == "gemini_paid":
+                api_key = get_setting(config.LOCAL_DB, "gemini_paid_api_key") or config.GEMINI_PAID_API_KEY
+            else:
+                api_key = get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
             engine = GeminiEngine(api_key=api_key)
         elif engine_name == "groq":
             from services.ai.groq_engine import GroqEngine
