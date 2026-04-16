@@ -39,10 +39,9 @@ class QueueWorker:
         engine: AIEngine,
         db_path: Optional[str] = None,
         rpm_limit: Optional[int] = None,
-        embed_engine: Optional[AIEngine] = None,
+        embed_engine: Optional[AIEngine] = None,  # non più usato, mantenuto per compatibilità
     ):
-        self._engine        = engine
-        self._embed_engine  = embed_engine  # se presente, usato solo per embedding
+        self._engine   = engine
         self._db_path  = db_path
         self._rpm      = rpm_limit  # None = nessun limite
         self.is_running = False
@@ -112,21 +111,7 @@ class QueueWorker:
             # Analisi AI
             analysis = await self._engine.analyze(image_bytes, location_hint)
 
-            # Embedding: testo = descrizione + soggetto + atmosfera + luogo
-            # Non bloccante: se il modello embedding non è disponibile
-            # la foto viene comunque analizzata con descrizione e punteggi.
-            embed_text = " ".join(filter(None, [
-                analysis.description,
-                analysis.subject,
-                analysis.atmosphere,
-                analysis.location_name or photo["location_name"],
-            ]))
-            embedder = self._embed_engine or self._engine
-            try:
-                embedding = await embedder.embed(embed_text)
-            except Exception as emb_exc:
-                logger.warning("Embedding non disponibile per photo_id=%s: %s", photo_id, emb_exc)
-                embedding = []
+            embedding = []  # embedding non usato: ricerca via query expansion
 
             # Aggiorna la foto nel DB
             update_photo(

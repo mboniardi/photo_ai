@@ -1,4 +1,4 @@
-"""Route /api/search — ricerca semantica."""
+"""Route /api/search — ricerca semantica via query expansion."""
 import json
 import logging
 import asyncio
@@ -8,13 +8,13 @@ from typing import Optional
 
 import config
 from database.settings import get_setting
-from services.search import semantic_search, is_quality_query, extract_limit
+from services.search import text_search, is_quality_query, extract_limit
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
-# Stato re-indicizzazione (modulo-level, condiviso tra richieste)
+# Stato re-indicizzazione (non più usato per embedding, mantenuto per compatibilità UI)
 _reembed_state: dict = {"running": False, "done": 0, "total": 0, "error": None}
 
 
@@ -32,9 +32,11 @@ class SearchRequest(BaseModel):
     limit: Optional[int] = None
 
 
-async def _get_embed_engine():
+async def _expand_query(query: str) -> list[str]:
     """
-    Usa Gemini (text-embedding-004) per gli embedding.
+    Usa Gemini per espandere la query in parole chiave italiane
+    che potrebbero apparire nelle descrizioni delle foto.
+    Ritorna una lista di parole chiave (minuscolo).
     """
     from services.ai.gemini import GeminiEngine
 
@@ -47,8 +49,43 @@ async def _get_embed_engine():
                    or get_setting(config.LOCAL_DB, "gemini_paid_api_key") or config.GEMINI_PAID_API_KEY)
 
     if not api_key:
-        raise HTTPException(status_code=400, detail="Gemini API key non configurata (necessaria per la ricerca semantica)")
-    return GeminiEngine(api_key=api_key)
+        # Nessuna chiave: usa le parole della query direttamente
+        return [w.strip().lower() for w in query.split() if len(w.strip()) > 2]
+
+    try:
+        from google import genai
+        import asyncio
+        client = genai.Client(api_key=api_key)
+        prompt = (
+            f'Sei un assistente per la ricerca in una libreria fotografica. '
+            f'Espandi questa query di ricerca in una lista di parole chiave italiane '
+            f'(o inglesi se il termine è più comune in inglese) che potrebbero apparire '
+            f'nelle descrizioni di foto. Restituisci SOLO una lista JSON di stringhe, '
+            f'nessun altro testo. Massimo 15 parole chiave.\n'
+            f'Query: "{query}"'
+        )
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: client.models.generate_content(
+                model=config.GEMINI_MODEL,
+                contents=[prompt],
+            )
+        )
+        text = response.text.strip()
+        # Rimuovi eventuali code fence
+        import re
+        text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.MULTILINE)
+        text = re.sub(r'\s*```$', '', text.strip(), flags=re.MULTILINE)
+        keywords = json.loads(text.strip())
+        if isinstance(keywords, list):
+            result = [str(k).lower().strip() for k in keywords if k]
+            logger.info("Query expansion '%s' → %s", query, result)
+            return result
+    except Exception as exc:
+        logger.warning("Query expansion fallita (%s), uso parole della query", exc)
+
+    return [w.strip().lower() for w in query.split() if len(w.strip()) > 2]
 
 
 @router.post("")
@@ -56,16 +93,17 @@ async def search_photos(req: SearchRequest):
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query non può essere vuota")
 
-    engine = await _get_embed_engine()
-    query_embedding = await engine.embed(req.query, task_type="RETRIEVAL_QUERY")
+    keywords = await _expand_query(req.query)
+    if not keywords:
+        return []
 
     is_quality = is_quality_query(req.query)
     limit = req.limit if req.limit is not None else extract_limit(req.query)
     is_trash = req.is_trash if req.is_trash is not None else False
 
-    return semantic_search(
+    return text_search(
         config.LOCAL_DB,
-        query_embedding,
+        keywords=keywords,
         is_quality=is_quality,
         limit=limit,
         folder_path=req.folder_path,
@@ -82,64 +120,10 @@ async def search_photos(req: SearchRequest):
 
 @router.get("/reembed/status")
 def reembed_status():
-    """Stato della ri-indicizzazione in corso."""
     return _reembed_state
 
 
 @router.post("/reembed")
 async def reembed_all(background_tasks: BackgroundTasks):
-    """
-    Ri-genera gli embedding di tutte le foto analizzate usando Gemini text-embedding-004.
-    Operazione una-tantum; utile per indicizzare foto analizzate con Groq (che non supporta embedding).
-    """
-    global _reembed_state
-    if _reembed_state["running"]:
-        raise HTTPException(status_code=409, detail="Re-indicizzazione già in corso")
-
-    engine = await _get_embed_engine()
-    background_tasks.add_task(_do_reembed, engine)
-    return {"ok": True, "message": "Re-indicizzazione avviata in background"}
-
-
-async def _do_reembed(engine) -> None:
-    """Task in background: ri-embeds tutte le foto analizzate."""
-    global _reembed_state
-    import sqlite3
-    from database.photos import update_photo
-
-    _reembed_state = {"running": True, "done": 0, "total": 0, "error": None}
-    try:
-        conn = sqlite3.connect(config.LOCAL_DB)
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            "SELECT id, description, subject, atmosphere, location_name "
-            "FROM photos WHERE analyzed_at IS NOT NULL"
-        ).fetchall()
-        conn.close()
-
-        _reembed_state["total"] = len(rows)
-
-        for row in rows:
-            embed_text = " ".join(filter(None, [
-                row["description"],
-                row["subject"],
-                row["atmosphere"],
-                row["location_name"],
-            ]))
-            if not embed_text.strip():
-                _reembed_state["done"] += 1
-                continue
-            try:
-                embedding = await engine.embed(embed_text)
-                update_photo(config.LOCAL_DB, row["id"], embedding=json.dumps(embedding))
-            except Exception as exc:
-                logger.warning("reembed fallito per photo_id=%s: %s", row["id"], exc)
-            _reembed_state["done"] += 1
-            # Cede il controllo per non bloccare altri handler
-            await asyncio.sleep(0)
-
-    except Exception as exc:
-        logger.error("reembed globale fallito: %s", exc)
-        _reembed_state["error"] = str(exc)
-    finally:
-        _reembed_state["running"] = False
+    """No-op: embedding non più necessario con ricerca a query expansion."""
+    return {"ok": True, "message": "La ricerca usa query expansion — nessuna indicizzazione necessaria."}
