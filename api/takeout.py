@@ -5,6 +5,7 @@ import os
 from typing import List
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
+from pydantic import BaseModel
 
 import config
 from database.photos import get_photo_id_by_path, update_photo
