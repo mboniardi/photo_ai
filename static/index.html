@@ -1139,6 +1139,21 @@
         <div class="divider"></div>
 
         <div class="form-group">
+          <label class="form-label">Ricerca semantica — embedding</label>
+          <div style="font-size:12px; color:var(--muted); margin-bottom:8px">
+            Gli embedding vengono generati da Ollama (locale). Rigenera dopo aver analizzato nuove foto o aver cambiato modello embed.
+          </div>
+          <button class="toolbar-btn" @click="startReembed" :disabled="reembedRunning" style="width:fit-content">
+            {{ reembedRunning ? `Indicizzazione… ${reembedDone}/${reembedTotal}` : '🔍 Re-indicizza embedding' }}
+          </button>
+          <div v-if="reembedResult" class="test-result" :class="reembedResult.ok ? 'ok' : 'err'" style="margin-top:6px">
+            {{ reembedResult.message }}
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="form-group">
           <label class="form-label">Analysis RPM limit</label>
           <input class="form-input" type="number" v-model.number="settingsForm.analysis_rpm_limit" min="1" max="60" />
         </div>
@@ -1735,6 +1750,10 @@ createApp({
     const testResult = ref(null);
     const purgingTrash = ref(false);
     const purgeResult = ref(null);
+    const reembedRunning = ref(false);
+    const reembedDone = ref(0);
+    const reembedTotal = ref(0);
+    const reembedResult = ref(null);
 
     // ── Takeout ──────────────────────────────────────────────────────
     const takeoutUploading = ref(false);
@@ -1858,6 +1877,35 @@ createApp({
       testingAi.value = false;
     }
 
+    async function startReembed() {
+      reembedResult.value = null;
+      reembedRunning.value = true;
+      reembedDone.value = 0;
+      reembedTotal.value = 0;
+      const resp = await apiFetch('/api/search/reembed', { method: 'POST', body: JSON.stringify({}) });
+      if (!resp || !resp.ok) {
+        reembedResult.value = { ok: false, message: 'Avvio re-indicizzazione fallito.' };
+        reembedRunning.value = false;
+        return;
+      }
+      // Polling stato
+      const poll = setInterval(async () => {
+        const s = await apiGet('/api/search/reembed/status');
+        if (!s) return;
+        reembedDone.value  = s.done;
+        reembedTotal.value = s.total;
+        if (!s.running) {
+          clearInterval(poll);
+          reembedRunning.value = false;
+          if (s.error) {
+            reembedResult.value = { ok: false, message: `Errore: ${s.error}` };
+          } else {
+            reembedResult.value = { ok: true, message: `Completato: ${s.done} foto indicizzate.` };
+          }
+        }
+      }, 1500);
+    }
+
     /* KEYBOARD */
     function onKeydown(e) {
       if (lightbox.open) {
@@ -1971,6 +2019,7 @@ createApp({
       browserRoot, browserCurrentPath, browserDirs, browserLoading, browserError, browserBreadcrumbs, browseTo, selectBrowserPath,
       showSettingsModal, savingSettings, testingAi, testResult, settingsForm,
       purgingTrash, purgeResult, purgeTrash,
+      reembedRunning, reembedDone, reembedTotal, reembedResult, startReembed,
       takeoutUploading, takeoutImporting, takeoutJsonCount, takeoutImportResult, takeoutUploadProgress, takeoutForce,
       onTakeoutFilesSelected,
       openSettings, saveSettings, testAiConnection,

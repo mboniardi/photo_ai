@@ -154,7 +154,18 @@ async def on_startup():
 
         default_rpm = config.GEMINI_PAID_RPM_LIMIT if engine_name == "gemini_paid" else config.ANALYSIS_RPM_LIMIT
         rpm = int(get_setting(config.LOCAL_DB, "analysis_rpm_limit") or default_rpm)
-        worker = QueueWorker(engine=engine, db_path=config.LOCAL_DB, rpm_limit=rpm)
+
+        # Usa sempre Ollama per gli embedding (locale, gratuito)
+        # Se non configurato o non raggiungibile, il worker cade back sull'engine principale
+        embed_engine = None
+        if engine_name != "ollama":
+            from services.ai.ollama import OllamaEngine as _OllamaEngine
+            _base_url    = get_setting(config.LOCAL_DB, "ollama_base_url")  or "http://localhost:11434"
+            _embed_model = get_setting(config.LOCAL_DB, "ollama_embed_model") or "nomic-embed-text"
+            embed_engine = _OllamaEngine(base_url=_base_url, embed_model=_embed_model)
+
+        worker = QueueWorker(engine=engine, db_path=config.LOCAL_DB, rpm_limit=rpm,
+                             embed_engine=embed_engine)
         await worker.start()
         set_worker(worker)
         app.state.worker = worker

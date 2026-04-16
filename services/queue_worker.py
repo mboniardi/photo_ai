@@ -39,8 +39,10 @@ class QueueWorker:
         engine: AIEngine,
         db_path: Optional[str] = None,
         rpm_limit: Optional[int] = None,
+        embed_engine: Optional[AIEngine] = None,
     ):
-        self._engine   = engine
+        self._engine        = engine
+        self._embed_engine  = embed_engine  # se presente, usato solo per embedding
         self._db_path  = db_path
         self._rpm      = rpm_limit  # None = nessun limite (Ollama)
         self.is_running = False
@@ -119,8 +121,9 @@ class QueueWorker:
                 analysis.atmosphere,
                 analysis.location_name or photo["location_name"],
             ]))
+            embedder = self._embed_engine or self._engine
             try:
-                embedding = await self._engine.embed(embed_text)
+                embedding = await embedder.embed(embed_text)
             except Exception as emb_exc:
                 logger.warning("Embedding non disponibile per photo_id=%s: %s", photo_id, emb_exc)
                 embedding = []
