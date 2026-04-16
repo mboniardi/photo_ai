@@ -1557,7 +1557,10 @@ createApp({
     function safeParse(val) {
       if (!val) return [];
       if (Array.isArray(val)) return val;
-      try { return JSON.parse(val); } catch { return []; }
+      try {
+        const parsed = JSON.parse(val);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch { return []; }
     }
 
     const lbSubjects   = computed(() => safeParse(lightbox.photo?.subjects));
