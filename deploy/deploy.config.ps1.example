@@ -32,6 +32,7 @@ $APP_GIT_BRANCH    = "main"
 $GOOGLE_CLIENT_ID     = "YOUR_CLIENT_ID.apps.googleusercontent.com"
 $GOOGLE_CLIENT_SECRET = "CHANGE_ME"
 $GEMINI_API_KEY       = "CHANGE_ME"
+$GEMINI_PAID_API_KEY  = ""              # opzionale — stessa libreria, limiti più alti
 $GROQ_API_KEY         = "CHANGE_ME"         # da console.groq.com — free tier, no carta di credito
 $AUTHORIZED_EMAILS    = @("your@gmail.com")
 $EXCLUDED_EXTS        = ".cr3"              # estensioni da escludere dalla scansione (es. ".cr3,.nef")
