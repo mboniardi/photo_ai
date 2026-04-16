@@ -13,7 +13,7 @@ QUALITY_KEYWORDS = frozenset({
     "best", "excellent",
 })
 
-SIMILARITY_THRESHOLD = 0.25
+SIMILARITY_THRESHOLD = 0.55
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
