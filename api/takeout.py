@@ -71,12 +71,13 @@ def import_takeout_coords(req: ImportRequest = ImportRequest()):
     not_found = 0
     errors = 0
 
-    # Costruisce indice filename → photo_id dal DB
+    # Costruisce indice filename → photo_id dal DB (case-insensitive)
     with get_db(config.LOCAL_DB) as conn:
         rows = conn.execute(
             "SELECT id, filename, latitude FROM photos WHERE is_trash = 0 OR is_trash IS NULL"
         ).fetchall()
-    db_index = {row["filename"]: (row["id"], row["latitude"]) for row in rows}
+    # Indice lowercase per matching case-insensitive
+    db_index = {row["filename"].lower(): (row["id"], row["latitude"]) for row in rows}
 
     for fname in os.listdir(config.TAKEOUT_JSON_PATH):
         if not fname.endswith(".json"):
@@ -86,21 +87,23 @@ def import_takeout_coords(req: ImportRequest = ImportRequest()):
             with open(fpath, "r", encoding="utf-8") as fh:
                 data = json.load(fh)
 
-            title = data.get("title", "")
+            title = data.get("title", "").strip()
             geo = data.get("geoData") or {}
             lat = geo.get("latitude")
             lon = geo.get("longitude")
 
-            # Coordinate assenti o nulle (0,0 = non georeferenziata)
-            if not lat or not lon or (lat == 0.0 and lon == 0.0):
+            # Coordinate assenti o nulle (0,0 = non georeferenziata in Google Photos)
+            if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
                 skipped_no_coords += 1
                 continue
 
-            if title not in db_index:
+            title_lower = title.lower()
+            if title_lower not in db_index:
                 not_found += 1
+                logger.debug("Takeout JSON '%s' → title '%s' non trovato nel DB", fname, title)
                 continue
 
-            photo_id, existing_lat = db_index[title]
+            photo_id, existing_lat = db_index[title_lower]
             if existing_lat is not None and not req.force:
                 skipped_already_has += 1
                 continue
