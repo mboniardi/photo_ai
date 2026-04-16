@@ -83,10 +83,9 @@ def semantic_search(
         results.append(photo_dict)
 
     if is_quality:
-        def _rank(r: dict) -> float:
-            score_norm = (r.get("overall_score") or 0.0) / 10.0
-            return 0.6 * r["similarity"] + 0.4 * score_norm
-        results.sort(key=_rank, reverse=True)
+        # "le migliori foto di X": la similarity ha già filtrato per X,
+        # ora ordina per qualità (overall_score) con similarity come tiebreaker
+        results.sort(key=lambda r: (r.get("overall_score") or 0.0, r["similarity"]), reverse=True)
     else:
         results.sort(key=lambda r: r["similarity"], reverse=True)
 
