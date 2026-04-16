@@ -976,7 +976,7 @@
               <tr v-if="lightbox.photo.filename"><td>File</td><td>{{ lightbox.photo.filename }}</td></tr>
               <tr v-if="lightbox.photo.file_size"><td>Size</td><td>{{ formatBytes(lightbox.photo.file_size) }}</td></tr>
               <tr v-if="lightbox.photo.width && lightbox.photo.height"><td>Dims</td><td>{{ lightbox.photo.width }}×{{ lightbox.photo.height }}</td></tr>
-              <tr v-if="lightbox.photo.taken_at"><td>Date</td><td>{{ formatDate(lightbox.photo.taken_at) }}</td></tr>
+              <tr v-if="lightbox.photo.exif_date"><td>Date</td><td>{{ formatDate(lightbox.photo.exif_date) }}</td></tr>
               <tr v-if="lightbox.photo.camera_make || lightbox.photo.camera_model">
                 <td>Camera</td>
                 <td>{{ [lightbox.photo.camera_make, lightbox.photo.camera_model].filter(Boolean).join(' ') }}</td>
