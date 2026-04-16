@@ -34,24 +34,11 @@ class SearchRequest(BaseModel):
 
 async def _get_embed_engine():
     """
-    Ritorna sempre un OllamaEngine per gli embedding (locale, gratuito).
-    Se Ollama non è configurato/raggiungibile, fallback a Gemini.
+    Usa Gemini (text-embedding-004) per gli embedding — gratuito, sempre disponibile.
+    Fallback a Ollama se Gemini non è configurato.
     """
-    from services.ai.ollama import OllamaEngine
-
-    base_url    = get_setting(config.LOCAL_DB, "ollama_base_url")  or "http://localhost:11434"
-    embed_model = get_setting(config.LOCAL_DB, "ollama_embed_model") or "nomic-embed-text"
-    engine = OllamaEngine(base_url=base_url, embed_model=embed_model)
-
-    # Prova a fare un embed vuoto per verificare la disponibilità
-    try:
-        await engine.embed("test")
-        return engine
-    except Exception:
-        pass
-
-    # Fallback: Gemini
     from services.ai.gemini import GeminiEngine
+
     engine_name = get_setting(config.LOCAL_DB, "ai_engine") or "gemini"
     if engine_name == "gemini_paid":
         api_key = (get_setting(config.LOCAL_DB, "gemini_paid_api_key") or config.GEMINI_PAID_API_KEY
@@ -59,12 +46,15 @@ async def _get_embed_engine():
     else:
         api_key = (get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
                    or get_setting(config.LOCAL_DB, "gemini_paid_api_key") or config.GEMINI_PAID_API_KEY)
-    if not api_key:
-        raise HTTPException(
-            status_code=400,
-            detail="Nessun engine disponibile per la ricerca: Ollama non raggiungibile e nessuna Gemini API key configurata"
-        )
-    return GeminiEngine(api_key=api_key)
+
+    if api_key:
+        return GeminiEngine(api_key=api_key)
+
+    # Fallback: Ollama locale
+    from services.ai.ollama import OllamaEngine
+    base_url    = get_setting(config.LOCAL_DB, "ollama_base_url")  or "http://localhost:11434"
+    embed_model = get_setting(config.LOCAL_DB, "ollama_embed_model") or "nomic-embed-text"
+    return OllamaEngine(base_url=base_url, embed_model=embed_model)
 
 
 @router.post("")
@@ -73,7 +63,11 @@ async def search_photos(req: SearchRequest):
         raise HTTPException(status_code=400, detail="Query non può essere vuota")
 
     engine = await _get_embed_engine()
-    query_embedding = await engine.embed(req.query)
+    from services.ai.gemini import GeminiEngine
+    if isinstance(engine, GeminiEngine):
+        query_embedding = await engine.embed(req.query, task_type="RETRIEVAL_QUERY")
+    else:
+        query_embedding = await engine.embed(req.query)
 
     is_quality = is_quality_query(req.query)
     limit = req.limit if req.limit is not None else extract_limit(req.query)

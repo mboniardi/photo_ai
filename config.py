@@ -29,7 +29,7 @@ TAKEOUT_JSON_PATH: str = os.environ.get("TAKEOUT_JSON_PATH", f"{APP_DATA_PATH}/t
 # ── Secrets / credenziali (nessun default: devono venire dall'env) ─
 GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-GEMINI_EMBED_MODEL: str = os.environ.get("GEMINI_EMBED_MODEL", "")
+GEMINI_EMBED_MODEL: str = os.environ.get("GEMINI_EMBED_MODEL", "text-embedding-004")
 
 # Gemini a pagamento — stessa libreria/modello, chiave con limiti più alti
 GEMINI_PAID_API_KEY: str = os.environ.get("GEMINI_PAID_API_KEY", "")

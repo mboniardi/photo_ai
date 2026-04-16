@@ -58,7 +58,7 @@ class GeminiEngine(AIEngine):
             longitude=data.get("luogo_lon"),
         )
 
-    async def embed(self, text: str) -> list:
+    async def embed(self, text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> list:
         if not config.GEMINI_EMBED_MODEL:
             return []
         loop = asyncio.get_running_loop()
@@ -67,7 +67,7 @@ class GeminiEngine(AIEngine):
             lambda: self._client.models.embed_content(
                 model=config.GEMINI_EMBED_MODEL,
                 contents=text,
-                config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT"),
+                config=types.EmbedContentConfig(task_type=task_type),
             )
         )
         return result.embeddings[0].values
