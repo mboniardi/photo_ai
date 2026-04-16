@@ -34,9 +34,17 @@ async def _get_engine():
         vision = get_setting(config.LOCAL_DB, "ollama_vision_model") or "llava"
         embed = get_setting(config.LOCAL_DB, "ollama_embed_model") or "nomic-embed-text"
         return OllamaEngine(vision_model=vision, embed_model=embed, base_url=base_url)
-    api_key = get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
+
+    # Groq has no embedding support — always use Gemini for semantic search.
+    # Prefer paid key → free key → env var.
+    if engine_name == "gemini_paid":
+        api_key = (get_setting(config.LOCAL_DB, "gemini_paid_api_key") or config.GEMINI_PAID_API_KEY
+                   or get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY)
+    else:
+        api_key = (get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
+                   or get_setting(config.LOCAL_DB, "gemini_paid_api_key") or config.GEMINI_PAID_API_KEY)
     if not api_key:
-        raise HTTPException(status_code=400, detail="Gemini API key non configurata")
+        raise HTTPException(status_code=400, detail="Gemini API key non configurata (necessaria per la ricerca semantica)")
     return GeminiEngine(api_key=api_key)
 
 
