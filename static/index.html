@@ -1158,12 +1158,9 @@
           <input type="file" ref="takeoutInput" webkitdirectory accept=".json"
                  style="display:none" @change="onTakeoutFilesSelected" />
           <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
-            <button class="toolbar-btn" @click="$refs.takeoutInput.click()" :disabled="takeoutUploading">
-              📂 Seleziona cartella JSON
-            </button>
-            <button class="toolbar-btn" @click="runTakeoutImport"
-                    :disabled="takeoutUploading || takeoutImporting || takeoutJsonCount === 0">
-              {{ takeoutImporting ? 'Importando…' : '📍 Importa coordinate' }}
+            <button class="toolbar-btn" @click="$refs.takeoutInput.click()"
+                    :disabled="takeoutUploading || takeoutImporting">
+              {{ takeoutUploading ? 'Caricando…' : takeoutImporting ? 'Importando…' : '📂 Seleziona cartella JSON' }}
             </button>
           </div>
           <label style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:12px; cursor:pointer">
@@ -1762,10 +1759,8 @@ createApp({
       takeoutUploading.value = false;
       evt.target.value = '';
       await fetchTakeoutStatus();
-      showToast(`${all.length} JSON caricati sul server.`, 'success');
-    }
 
-    async function runTakeoutImport() {
+      // Avvia import automaticamente dopo l'upload
       takeoutImporting.value = true;
       takeoutImportResult.value = null;
       const data = await apiPost('/api/takeout/import', { force: takeoutForce.value });
@@ -1773,6 +1768,7 @@ createApp({
       if (data) {
         takeoutImportResult.value = data;
         if (data.updated > 0) showToast(`${data.updated} foto aggiornate con coordinate GPS.`, 'success');
+        else showToast('Import completato — nessuna foto aggiornata.', 'warn');
       }
     }
     const settingsForm = reactive({
@@ -1960,7 +1956,7 @@ createApp({
       showSettingsModal, savingSettings, testingAi, testResult, settingsForm,
       purgingTrash, purgeResult, purgeTrash,
       takeoutUploading, takeoutImporting, takeoutJsonCount, takeoutImportResult, takeoutUploadProgress, takeoutForce,
-      onTakeoutFilesSelected, runTakeoutImport,
+      onTakeoutFilesSelected,
       openSettings, saveSettings, testAiConnection,
     };
   }
