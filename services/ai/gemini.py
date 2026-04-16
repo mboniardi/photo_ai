@@ -7,6 +7,7 @@ import asyncio
 import json
 import re
 
+import httpx
 from google import genai
 from google.genai import types
 
@@ -25,12 +26,8 @@ class GeminiEngine(AIEngine):
     def __init__(self, api_key: str):
         if not api_key:
             raise ValueError("API key Gemini obbligatoria")
+        self._api_key = api_key
         self._client = genai.Client(api_key=api_key)
-        # embed_content richiede v1, non v1beta (default del SDK)
-        self._embed_client = genai.Client(
-            api_key=api_key,
-            http_options=types.HttpOptions(api_version="v1"),
-        )
 
     async def analyze(
         self,
@@ -66,16 +63,17 @@ class GeminiEngine(AIEngine):
     async def embed(self, text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> list:
         if not config.GEMINI_EMBED_MODEL:
             return []
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: self._embed_client.models.embed_content(
-                model=config.GEMINI_EMBED_MODEL,
-                contents=text,
-                config=types.EmbedContentConfig(task_type=task_type),
-            )
-        )
-        return result.embeddings[0].values
+        model = config.GEMINI_EMBED_MODEL.lstrip("models/")
+        url = f"https://generativelanguage.googleapis.com/v1/models/{model}:embedContent"
+        payload = {
+            "model": f"models/{model}",
+            "content": {"parts": [{"text": text}]},
+            "taskType": task_type,
+        }
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(url, json=payload, params={"key": self._api_key})
+            resp.raise_for_status()
+            return resp.json()["embedding"]["values"]
 
 
 def _build_prompt(location_hint: str) -> str:
