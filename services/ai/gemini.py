@@ -81,7 +81,7 @@ class GeminiEngine(AIEngine):
 def _build_prompt(location_hint: str) -> str:
     location_section = ""
     if location_hint:
-        location_section = f"\n[SE DISPONIBILE: La foto è stata scattata a: {location_hint}]"
+        location_section = f"\n[CONTESTO GEOGRAFICO: {location_hint} — usa queste informazioni per arricchire la descrizione con il contesto geografico e storico del luogo.]"
 
     return f"""Sei un critico fotografico esperto. Analizza questa fotografia e rispondi ESCLUSIVAMENTE con un oggetto JSON valido (nessun testo aggiuntivo, nessun markdown, nessun delimitatore).
 

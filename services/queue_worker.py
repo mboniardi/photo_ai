@@ -105,8 +105,13 @@ class QueueWorker:
             image_bytes = prepare_for_ai(photo["file_path"],
                                          max_side_px=self._engine.max_side_px)
 
-            # Location hint se disponibile
-            location_hint = photo["location_name"] or ""
+            # Location hint: nome luogo noto + coordinate GPS se disponibili
+            parts = []
+            if photo["location_name"]:
+                parts.append(photo["location_name"])
+            if photo["latitude"] and photo["longitude"]:
+                parts.append(f"coordinate GPS: {photo['latitude']:.4f}, {photo['longitude']:.4f}")
+            location_hint = " — ".join(parts)
 
             # Analisi AI
             analysis = await self._engine.analyze(image_bytes, location_hint)
