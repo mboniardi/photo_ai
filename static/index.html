@@ -1311,6 +1311,22 @@ createApp({
     }
 
     /* USER */
+
+    /* LOCATION EDITOR */
+    const locationEditor = reactive({
+      open: false,
+      photoId: null,
+      pendingLat: null,
+      pendingLon: null,
+      pendingName: '',
+      searchQuery: '',
+      searchError: '',
+      saving: false,
+    });
+    let _leafletMap = null;
+    let _leafletMarker = null;
+    let _searchDebounceTimer = null;
+
     const user = ref(null);
     const userInitial = computed(() => {
       if (!user.value) return '?';
@@ -1622,6 +1638,120 @@ createApp({
       await apiPut(`/api/photos/${lightbox.photo.id}`, { user_description: lightbox.editDesc });
       lightbox.photo.user_description = lightbox.editDesc;
       lightbox.origDesc = lightbox.editDesc;
+    }
+
+    function openLocationEditor() {
+      if (!lightbox.photo) return;
+      locationEditor.photoId   = lightbox.photo.id;
+      locationEditor.pendingLat = lightbox.photo.latitude  ?? null;
+      locationEditor.pendingLon = lightbox.photo.longitude ?? null;
+      locationEditor.pendingName = lightbox.photo.location_name || '';
+      locationEditor.searchQuery = '';
+      locationEditor.searchError = '';
+      locationEditor.saving = false;
+      locationEditor.open = true;
+      nextTick(() => { _initLeafletMap(); });
+    }
+
+    function closeLocationEditor() {
+      locationEditor.open = false;
+    }
+
+    function _initLeafletMap() {
+      if (!_leafletMap) {
+        _leafletMap = L.map('location-map');
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap contributors',
+          maxZoom: 19,
+        }).addTo(_leafletMap);
+        _leafletMap.on('click', (e) => {
+          _placePin(e.latlng.lat, e.latlng.lng);
+          reverseGeocode(e.latlng.lat, e.latlng.lng);
+        });
+      }
+      if (_leafletMarker) {
+        _leafletMap.removeLayer(_leafletMarker);
+        _leafletMarker = null;
+      }
+      if (locationEditor.pendingLat != null && locationEditor.pendingLon != null) {
+        _leafletMap.setView([locationEditor.pendingLat, locationEditor.pendingLon], 13);
+        _placePin(locationEditor.pendingLat, locationEditor.pendingLon);
+      } else {
+        _leafletMap.setView([20, 0], 2);
+      }
+      _leafletMap.invalidateSize();
+    }
+
+    function _placePin(lat, lon) {
+      locationEditor.pendingLat = lat;
+      locationEditor.pendingLon = lon;
+      if (_leafletMarker) {
+        _leafletMarker.setLatLng([lat, lon]);
+      } else {
+        _leafletMarker = L.marker([lat, lon], { draggable: true }).addTo(_leafletMap);
+        _leafletMarker.on('dragend', (e) => {
+          const pos = e.target.getLatLng();
+          locationEditor.pendingLat = pos.lat;
+          locationEditor.pendingLon = pos.lng;
+          reverseGeocode(pos.lat, pos.lng);
+        });
+      }
+    }
+
+    async function reverseGeocode(lat, lon) {
+      try {
+        const resp = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`,
+          { headers: { 'User-Agent': 'photo-catalog/1.0' } }
+        );
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.display_name) locationEditor.pendingName = data.display_name;
+      } catch { /* keep existing pendingName */ }
+    }
+
+    function onLocationSearchInput() {
+      locationEditor.searchError = '';
+      clearTimeout(_searchDebounceTimer);
+      if (!locationEditor.searchQuery.trim()) return;
+      _searchDebounceTimer = setTimeout(() => searchLocation(locationEditor.searchQuery), 500);
+    }
+
+    async function searchLocation(query) {
+      try {
+        const resp = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`,
+          { headers: { 'User-Agent': 'photo-catalog/1.0' } }
+        );
+        if (!resp.ok) throw new Error('network');
+        const data = await resp.json();
+        if (!data.length) { locationEditor.searchError = 'Luogo non trovato'; return; }
+        const { lat, lon, display_name } = data[0];
+        _leafletMap.setView([parseFloat(lat), parseFloat(lon)], 13);
+        _placePin(parseFloat(lat), parseFloat(lon));
+        locationEditor.pendingName = display_name;
+      } catch { locationEditor.searchError = 'Luogo non trovato'; }
+    }
+
+    async function saveLocation() {
+      if (!locationEditor.photoId || locationEditor.pendingLat == null) return;
+      locationEditor.saving = true;
+      const result = await apiPut(`/api/photos/${locationEditor.photoId}`, {
+        latitude: locationEditor.pendingLat,
+        longitude: locationEditor.pendingLon,
+        location_name: locationEditor.pendingName,
+        location_source: 'manual',
+      });
+      locationEditor.saving = false;
+      if (!result?.ok) {
+        showToast('Errore nel salvataggio della posizione', 'error');
+        return;
+      }
+      lightbox.photo.latitude      = locationEditor.pendingLat;
+      lightbox.photo.longitude     = locationEditor.pendingLon;
+      lightbox.photo.location_name = locationEditor.pendingName;
+      locationEditor.open = false;
+      showToast('Posizione aggiornata', 'success');
     }
 
     async function toggleFavorite() {
@@ -2034,6 +2164,8 @@ createApp({
       lightbox, lightboxIndex, openLightbox, closeLightbox, lightboxPrev, lightboxNext,
       lbSubjects, lbAtmosphere, lbColors, lbStrengths, lbWeaknesses,
       saveDescription, toggleFavorite, toggleTrash, reanalyze,
+      locationEditor, openLocationEditor, closeLocationEditor,
+      onLocationSearchInput, saveLocation,
       scoreClass, scoreColor, qualityLabel, qualityClass,
       formatBytes, formatDate, descSnippet,
       showAddFolder, addFolderLoading, addFolderForm, openAddFolder, submitAddFolder,
