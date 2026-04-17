@@ -2091,7 +2091,7 @@ createApp({
     async function switchToMap() {
       currentView.value = 'map';
       await nextTick();
-      if (_leafletMap) return;
+      if (_leafletMap) { _leafletMap.remove(); _leafletMap = null; }
       const container = document.getElementById('photo-map');
       if (!container) return;
 
