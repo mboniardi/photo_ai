@@ -1752,7 +1752,7 @@ createApp({
       lightbox.photo.longitude     = locationEditor.pendingLon;
       lightbox.photo.location_name = locationEditor.pendingName;
       lightbox.photo.location_source = 'manual';
-      locationEditor.open = false;
+      closeLocationEditor();
       showToast('Posizione aggiornata', 'success');
     }
 
