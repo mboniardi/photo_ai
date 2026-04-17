@@ -1661,6 +1661,7 @@ createApp({
     }
 
     function closeLocationEditor() {
+      clearTimeout(_searchDebounceTimer);
       locationEditor.open = false;
       if (_locMap) { _locMap.remove(); _locMap = null; _locMarker = null; }
     }
