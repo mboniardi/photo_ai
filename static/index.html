@@ -2116,6 +2116,7 @@ createApp({
     function switchToGrid() {
       currentView.value = 'grid';
       mapSelectedPhoto.value = null;
+      if (_leafletMap) { _leafletMap.remove(); _leafletMap = null; }
     }
 
     async function openMapPhoto() {
