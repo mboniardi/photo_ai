@@ -118,3 +118,29 @@ class TestImageEndpoint:
         resp = c.get(f"/api/photos/{pid}/image")
         assert resp.status_code == 200
         assert "image" in resp.headers["content-type"]
+
+
+class TestUpdatePhotoLocation:
+    def test_set_location_with_source(self, client_with_photo):
+        c, pid, _ = client_with_photo
+        resp = c.put(f"/api/photos/{pid}", json={
+            "latitude": 30.0444,
+            "longitude": 31.2357,
+            "location_name": "Cairo, Egypt",
+            "location_source": "manual",
+        })
+        assert resp.status_code == 200
+        data = c.get(f"/api/photos/{pid}").json()
+        assert data["latitude"] == pytest.approx(30.0444, abs=1e-4)
+        assert data["longitude"] == pytest.approx(31.2357, abs=1e-4)
+        assert data["location_name"] == "Cairo, Egypt"
+        assert data["location_source"] == "manual"
+
+    def test_location_source_not_required(self, client_with_photo):
+        c, pid, _ = client_with_photo
+        resp = c.put(f"/api/photos/{pid}", json={
+            "latitude": 41.9028,
+            "longitude": 12.4964,
+            "location_name": "Roma, Italia",
+        })
+        assert resp.status_code == 200

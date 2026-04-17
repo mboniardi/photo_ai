@@ -19,6 +19,7 @@ class PhotoUpdateRequest(BaseModel):
     location_name: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    location_source: Optional[str] = None
 
 
 @router.get("")
