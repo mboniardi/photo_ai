@@ -144,3 +144,5 @@ class TestUpdatePhotoLocation:
             "location_name": "Roma, Italia",
         })
         assert resp.status_code == 200
+        data = c.get(f"/api/photos/{pid}").json()
+        assert data["location_source"] is None
