@@ -958,9 +958,16 @@
           </div>
 
           <!-- Location -->
-          <div v-if="lightbox.photo.location_name || lightbox.photo.latitude">
-            <div class="lb-section-title">Location</div>
-            <span style="font-size:12px">{{ lightbox.photo.location_name || 'Unknown' }}</span>
+          <div>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px">
+              <div class="lb-section-title" style="margin-bottom:0">Location</div>
+              <button
+                @click="openLocationEditor"
+                style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:2px 6px;border-radius:4px;border:1px solid var(--border)"
+                title="Modifica posizione"
+              >✏ Modifica</button>
+            </div>
+            <span style="font-size:12px">{{ lightbox.photo.location_name || '—' }}</span>
             <a
               v-if="lightbox.photo.latitude && lightbox.photo.longitude"
               :href="`https://www.openstreetmap.org/?mlat=${lightbox.photo.latitude}&mlon=${lightbox.photo.longitude}&zoom=14`"
