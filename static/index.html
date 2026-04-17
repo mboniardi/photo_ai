@@ -1323,8 +1323,8 @@ createApp({
       searchError: '',
       saving: false,
     });
-    let _leafletMap = null;
-    let _leafletMarker = null;
+    let _locMap = null;
+    let _locMarker = null;
     let _searchDebounceTimer = null;
 
     const user = ref(null);
@@ -1655,41 +1655,42 @@ createApp({
 
     function closeLocationEditor() {
       locationEditor.open = false;
+      if (_locMap) { _locMap.remove(); _locMap = null; _locMarker = null; }
     }
 
     function _initLeafletMap() {
-      if (!_leafletMap) {
-        _leafletMap = L.map('location-map');
+      if (!_locMap) {
+        _locMap = L.map('location-map');
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '© OpenStreetMap contributors',
           maxZoom: 19,
-        }).addTo(_leafletMap);
-        _leafletMap.on('click', (e) => {
+        }).addTo(_locMap);
+        _locMap.on('click', (e) => {
           _placePin(e.latlng.lat, e.latlng.lng);
           reverseGeocode(e.latlng.lat, e.latlng.lng);
         });
       }
-      if (_leafletMarker) {
-        _leafletMap.removeLayer(_leafletMarker);
-        _leafletMarker = null;
+      if (_locMarker) {
+        _locMap.removeLayer(_locMarker);
+        _locMarker = null;
       }
       if (locationEditor.pendingLat != null && locationEditor.pendingLon != null) {
-        _leafletMap.setView([locationEditor.pendingLat, locationEditor.pendingLon], 13);
+        _locMap.setView([locationEditor.pendingLat, locationEditor.pendingLon], 13);
         _placePin(locationEditor.pendingLat, locationEditor.pendingLon);
       } else {
-        _leafletMap.setView([20, 0], 2);
+        _locMap.setView([20, 0], 2);
       }
-      _leafletMap.invalidateSize();
+      _locMap.invalidateSize();
     }
 
     function _placePin(lat, lon) {
       locationEditor.pendingLat = lat;
       locationEditor.pendingLon = lon;
-      if (_leafletMarker) {
-        _leafletMarker.setLatLng([lat, lon]);
+      if (_locMarker) {
+        _locMarker.setLatLng([lat, lon]);
       } else {
-        _leafletMarker = L.marker([lat, lon], { draggable: true }).addTo(_leafletMap);
-        _leafletMarker.on('dragend', (e) => {
+        _locMarker = L.marker([lat, lon], { draggable: true }).addTo(_locMap);
+        _locMarker.on('dragend', (e) => {
           const pos = e.target.getLatLng();
           locationEditor.pendingLat = pos.lat;
           locationEditor.pendingLon = pos.lng;
@@ -1727,7 +1728,7 @@ createApp({
         const data = await resp.json();
         if (!data.length) { locationEditor.searchError = 'Luogo non trovato'; return; }
         const { lat, lon, display_name } = data[0];
-        _leafletMap.setView([parseFloat(lat), parseFloat(lon)], 13);
+        _locMap.setView([parseFloat(lat), parseFloat(lon)], 13);
         _placePin(parseFloat(lat), parseFloat(lon));
         locationEditor.pendingName = display_name;
       } catch { locationEditor.searchError = 'Luogo non trovato'; }
@@ -1750,6 +1751,7 @@ createApp({
       lightbox.photo.latitude      = locationEditor.pendingLat;
       lightbox.photo.longitude     = locationEditor.pendingLon;
       lightbox.photo.location_name = locationEditor.pendingName;
+      lightbox.photo.location_source = 'manual';
       locationEditor.open = false;
       showToast('Posizione aggiornata', 'success');
     }
