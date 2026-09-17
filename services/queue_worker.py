@@ -40,7 +40,6 @@ class QueueWorker:
         db_path: Optional[str] = None,
         rpm_limit: Optional[int] = None,
         embedder=None,
-        **kwargs,  # Ignora parametri legacy come embed_engine
     ):
         self._engine    = engine
         self._embedder  = embedder
