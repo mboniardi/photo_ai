@@ -49,7 +49,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 2. Create an API key and copy it into `deploy.config.ps1` as `$GEMINI_API_KEY`
 3. The free tier works with rate limits — billing not required
 4. Default model: `gemini-2.5-flash` (configurable via `GEMINI_MODEL` in `.env`)
-5. Embedding is disabled by default (`GEMINI_EMBED_MODEL=`) as most free-tier accounts lack access
+5. Embeddings are generated locally by bge-m3 via Ollama, not by Gemini — see `OLLAMA_BASE_URL` and `OLLAMA_EMBED_MODEL` below
 
 ---
 
@@ -91,7 +91,8 @@ These are not in `deploy.config.ps1` but can be set in `/opt/photo_ai/.env` on t
 | Variable | Default | Description |
 |---|---|---|
 | `GEMINI_MODEL` | `gemini-2.5-flash` | Gemini vision model |
-| `GEMINI_EMBED_MODEL` | _(empty)_ | Embedding model — leave empty on free tier |
+| `OLLAMA_BASE_URL` | `http://172.24.24.91:11434` | Ollama host serving the embedding model |
+| `OLLAMA_EMBED_MODEL` | `bge-m3` | Embedding model, served locally by Ollama |
 | `EXCLUDED_EXTS` | _(from config)_ | Comma-separated extensions to skip (e.g. `.cr3,.nef`) |
 | `MAX_SIDE_PX` | `1280` | Max image side before sending to AI |
 | `JPEG_QUALITY` | `85` | JPEG quality for AI uploads |
@@ -244,7 +245,7 @@ print(f'Removed: {r.rowcount} records')
 | SSH `WARNING: REMOTE HOST IDENTIFICATION` | `ssh-keygen -R <VM_IP>` then reconnect |
 | `deploy.config.ps1` missing | Copy from `.example` and fill in secrets — not in git |
 | DB lost after VM recreation | Fixed: `/mnt/nas/photo_ai_data` is mounted writable for DB backup |
-| Embedding 404 errors | Set `GEMINI_EMBED_MODEL=` (empty) in `.env` — free tier has no embedding access |
+| Embedding errors | Check `OLLAMA_BASE_URL` in `.env` points to a reachable Ollama host serving `bge-m3` |
 | 503 errors from Gemini | Free tier overload — queue auto-pauses 60s and retries |
 | Photos not disappearing after trash | Fixed: normal view always filters `is_trash=false` |
 

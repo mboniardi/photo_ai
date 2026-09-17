@@ -1094,6 +1094,7 @@
             <option value="gemini">Gemini free (15 RPM)</option>
             <option value="gemini_paid">Gemini paid (alta quota)</option>
             <option value="groq">Groq (Llama 4)</option>
+            <option value="deepseek">DeepSeek (visione)</option>
           </select>
         </div>
 
@@ -1118,6 +1119,13 @@
           </div>
         </template>
 
+        <template v-if="settingsForm.ai_engine === 'deepseek'">
+          <div class="form-group">
+            <label class="form-label">DeepSeek API key</label>
+            <input class="form-input" type="password" v-model="settingsForm.deepseek_api_key" placeholder="sk-…" autocomplete="off" />
+          </div>
+        </template>
+
         <div class="form-group">
           <button class="toolbar-btn" @click="testAiConnection" :disabled="testingAi" style="width:fit-content">
             {{ testingAi ? 'Testing…' : '🔌 Test connection' }}
@@ -1132,7 +1140,8 @@
         <div class="form-group">
           <label class="form-label">Ricerca semantica — embedding</label>
           <div style="font-size:12px; color:var(--muted); margin-bottom:8px">
-            Gli embedding vengono generati da Gemini (text-embedding-004). Rigenera dopo aver analizzato nuove foto con un engine diverso.
+            Gli embedding vengono generati in locale da bge-m3 via Ollama.
+            Rigenerali dopo aver cambiato modello di embedding o analizzato foto con embedding mancante.
           </div>
           <button class="toolbar-btn" @click="startReembed" :disabled="reembedRunning" style="width:fit-content">
             {{ reembedRunning ? `Indicizzazione… ${reembedDone}/${reembedTotal}` : '🔍 Re-indicizza embedding' }}
@@ -1979,6 +1988,7 @@ createApp({
       gemini_api_key: '',
       gemini_paid_api_key: '',
       groq_api_key: '',
+      deepseek_api_key: '',
       analysis_rpm_limit: 10,
     });
 
@@ -1991,6 +2001,7 @@ createApp({
         if (data.gemini_api_key)       settingsForm.gemini_api_key = data.gemini_api_key;
         if (data.gemini_paid_api_key)  settingsForm.gemini_paid_api_key = data.gemini_paid_api_key;
         if (data.groq_api_key)         settingsForm.groq_api_key = data.groq_api_key;
+        if (data.deepseek_api_key)     settingsForm.deepseek_api_key = data.deepseek_api_key;
         if (data.analysis_rpm_limit)   settingsForm.analysis_rpm_limit = Number(data.analysis_rpm_limit);
       }
       showSettingsModal.value = true;
@@ -2010,6 +2021,9 @@ createApp({
       }
       if (settingsForm.ai_engine === 'groq' && settingsForm.groq_api_key) {
         payload.groq_api_key = settingsForm.groq_api_key;
+      }
+      if (settingsForm.ai_engine === 'deepseek' && settingsForm.deepseek_api_key) {
+        payload.deepseek_api_key = settingsForm.deepseek_api_key;
       }
       await apiPut('/api/settings', payload);
       savingSettings.value = false;
