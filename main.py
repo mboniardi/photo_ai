@@ -132,21 +132,12 @@ async def on_startup():
     from services.queue_worker import QueueWorker
     from database.settings import get_setting
 
+    from api.settings import build_engine, engine_api_key
     engine_name = get_setting(config.LOCAL_DB, "ai_engine") or "gemini"
     try:
-        from services.ai.gemini import GeminiEngine
-        if engine_name in ("gemini", "gemini_paid"):
-            if engine_name == "gemini_paid":
-                api_key = get_setting(config.LOCAL_DB, "gemini_paid_api_key") or config.GEMINI_PAID_API_KEY
-            else:
-                api_key = get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
-            engine = GeminiEngine(api_key=api_key)
-        else:  # groq
-            from services.ai.groq_engine import GroqEngine
-            api_key = get_setting(config.LOCAL_DB, "groq_api_key") or config.GROQ_API_KEY
-            engine = GroqEngine(api_key=api_key)
-
-        default_rpm = config.GEMINI_PAID_RPM_LIMIT if engine_name == "gemini_paid" else config.ANALYSIS_RPM_LIMIT
+        engine = build_engine(engine_name, engine_api_key(engine_name))
+        default_rpm = (config.GEMINI_PAID_RPM_LIMIT if engine_name == "gemini_paid"
+                       else config.ANALYSIS_RPM_LIMIT)
         rpm = int(get_setting(config.LOCAL_DB, "analysis_rpm_limit") or default_rpm)
 
         from services.embedding import OllamaEmbedder
