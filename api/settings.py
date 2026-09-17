@@ -13,11 +13,38 @@ ALLOWED_KEYS = {
     "gemini_api_key",
     "gemini_paid_api_key",
     "groq_api_key",
+    "deepseek_api_key",
     "analysis_rpm_limit",
     "backup_interval_min",
     "backup_retention",
     "nas_folder",
 }
+
+
+def build_engine(engine_name: str, api_key: str):
+    """Costruisce il motore di analisi richiesto. Solleva ValueError se ignoto."""
+    if engine_name in ("gemini", "gemini_paid"):
+        from services.ai.gemini import GeminiEngine
+        return GeminiEngine(api_key=api_key)
+    if engine_name == "groq":
+        from services.ai.groq_engine import GroqEngine
+        return GroqEngine(api_key=api_key)
+    if engine_name == "deepseek":
+        from services.ai.deepseek import DeepSeekEngine
+        return DeepSeekEngine(api_key=api_key)
+    raise ValueError(f"Engine sconosciuto: {engine_name}")
+
+
+def engine_api_key(engine_name: str) -> str:
+    """Chiave API del motore: prima le impostazioni, poi l'ambiente."""
+    mapping = {
+        "gemini":      ("gemini_api_key", config.GEMINI_API_KEY),
+        "gemini_paid": ("gemini_paid_api_key", config.GEMINI_PAID_API_KEY),
+        "groq":        ("groq_api_key", config.GROQ_API_KEY),
+        "deepseek":    ("deepseek_api_key", config.DEEPSEEK_API_KEY),
+    }
+    key_name, fallback = mapping[engine_name]
+    return get_setting(config.LOCAL_DB, key_name) or fallback
 
 
 @router.get("")
@@ -56,6 +83,22 @@ def test_ai_connection():
                 max_tokens=1,
             )
             return {"ok": True, "message": f"Groq ({config.GROQ_MODEL}) connesso correttamente"}
+        elif engine_name == "deepseek":
+            import httpx
+            api_key = engine_api_key("deepseek")
+            if not api_key:
+                raise ValueError("DEEPSEEK_API_KEY non configurata")
+            resp = httpx.post(
+                "https://api.deepseek.com/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={"model": config.DEEPSEEK_MODEL,
+                      "messages": [{"role": "user", "content": "ping"}],
+                      "max_tokens": 1},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return {"ok": True,
+                    "message": f"DeepSeek ({config.DEEPSEEK_MODEL}) connesso correttamente"}
         else:
             raise ValueError(f"Engine sconosciuto: {engine_name}")
     except Exception as exc:
@@ -73,7 +116,7 @@ async def put_settings(body: dict):
         set_setting(config.LOCAL_DB, key=key, value=str(value))
 
     # Se cambia il motore AI o la sua chiave, ricrea e riavvia il worker
-    engine_keys = {"ai_engine", "gemini_api_key", "gemini_paid_api_key", "groq_api_key"}
+    engine_keys = {"ai_engine", "gemini_api_key", "gemini_paid_api_key", "groq_api_key", "deepseek_api_key"}
     if body.keys() & engine_keys:
         await _restart_worker()
 
@@ -84,6 +127,7 @@ async def _restart_worker():
     """Ferma il worker corrente e ne avvia uno nuovo con le impostazioni aggiornate."""
     from api.queue import get_worker, set_worker
     from services.queue_worker import QueueWorker
+    from services.embedding import OllamaEmbedder
 
     old_worker = get_worker()
     if old_worker:
@@ -91,24 +135,13 @@ async def _restart_worker():
 
     engine_name = get_setting(config.LOCAL_DB, "ai_engine") or "gemini"
     try:
-        from services.ai.gemini import GeminiEngine
-        if engine_name in ("gemini", "gemini_paid"):
-            if engine_name == "gemini_paid":
-                api_key = get_setting(config.LOCAL_DB, "gemini_paid_api_key") or config.GEMINI_PAID_API_KEY
-            else:
-                api_key = get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
-            engine = GeminiEngine(api_key=api_key)
-        else:  # groq
-            from services.ai.groq_engine import GroqEngine
-            api_key = get_setting(config.LOCAL_DB, "groq_api_key") or config.GROQ_API_KEY
-            engine = GroqEngine(api_key=api_key)
-
-        default_rpm = config.GEMINI_PAID_RPM_LIMIT if engine_name == "gemini_paid" else config.ANALYSIS_RPM_LIMIT
+        engine = build_engine(engine_name, engine_api_key(engine_name))
+        default_rpm = (config.GEMINI_PAID_RPM_LIMIT if engine_name == "gemini_paid"
+                       else config.ANALYSIS_RPM_LIMIT)
         rpm = int(get_setting(config.LOCAL_DB, "analysis_rpm_limit") or default_rpm)
 
-        from services.embedding import OllamaEmbedder
-        worker = QueueWorker(engine=engine, db_path=config.LOCAL_DB, rpm_limit=rpm,
-                             embedder=OllamaEmbedder())
+        worker = QueueWorker(engine=engine, db_path=config.LOCAL_DB,
+                             rpm_limit=rpm, embedder=OllamaEmbedder())
         await worker.start()
         set_worker(worker)
         logger.info("Worker riavviato con engine=%s", engine_name)

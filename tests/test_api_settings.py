@@ -51,3 +51,20 @@ class TestPutSettings:
     def test_rejects_unknown_key(self, client):
         resp = client.put("/api/settings", json={"unknown_key": "value"})
         assert resp.status_code == 422
+
+
+class TestDeepSeekSetting:
+    def test_deepseek_api_key_is_allowed(self):
+        from api.settings import ALLOWED_KEYS
+        assert "deepseek_api_key" in ALLOWED_KEYS
+
+    def test_build_engine_returns_deepseek(self):
+        from api.settings import build_engine
+        from services.ai.deepseek import DeepSeekEngine
+        engine = build_engine("deepseek", api_key="sk-test")
+        assert isinstance(engine, DeepSeekEngine)
+
+    def test_build_engine_rejects_unknown(self):
+        from api.settings import build_engine
+        with pytest.raises(ValueError, match="sconosciuto"):
+            build_engine("inesistente", api_key="x")
