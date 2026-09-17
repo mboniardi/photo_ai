@@ -79,3 +79,36 @@ class TestDerivedPaths:
     def test_remote_db_ends_with_db(self):
         import config
         assert config.REMOTE_DB.endswith(".db")
+
+
+class TestEmbeddingAndDeepSeekConfig:
+    def test_ollama_defaults(self, monkeypatch):
+        monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+        monkeypatch.delenv("OLLAMA_EMBED_MODEL", raising=False)
+        import config, importlib
+        importlib.reload(config)
+        assert config.OLLAMA_BASE_URL == "http://172.24.24.91:11434"
+        assert config.OLLAMA_EMBED_MODEL == "bge-m3"
+
+    def test_ollama_from_env(self, monkeypatch):
+        monkeypatch.setenv("OLLAMA_BASE_URL", "http://10.0.0.5:11434")
+        import config, importlib
+        importlib.reload(config)
+        assert config.OLLAMA_BASE_URL == "http://10.0.0.5:11434"
+
+    def test_search_cutoff_defaults(self, monkeypatch):
+        monkeypatch.delenv("SEARCH_SIMILARITY_FLOOR", raising=False)
+        monkeypatch.delenv("SEARCH_RELATIVE_CUTOFF", raising=False)
+        import config, importlib
+        importlib.reload(config)
+        assert config.SEARCH_SIMILARITY_FLOOR == 0.40
+        assert config.SEARCH_RELATIVE_CUTOFF == 0.90
+
+    def test_deepseek_defaults(self, monkeypatch):
+        monkeypatch.delenv("DEEPSEEK_MODEL", raising=False)
+        monkeypatch.delenv("DEEPSEEK_MAX_SIDE_PX", raising=False)
+        import config, importlib
+        importlib.reload(config)
+        assert config.DEEPSEEK_MODEL == "deepseek-flash"
+        assert config.DEEPSEEK_MAX_SIDE_PX == 1024
+        assert config.DEEPSEEK_API_KEY == "" or isinstance(config.DEEPSEEK_API_KEY, str)

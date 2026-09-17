@@ -38,6 +38,25 @@ GEMINI_PAID_RPM_LIMIT: int = int(os.environ.get("GEMINI_PAID_RPM_LIMIT", 30))
 GROQ_API_KEY: str = os.environ.get("GROQ_API_KEY", "")
 GROQ_MODEL: str = os.environ.get("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
 
+# ── DeepSeek (motore di analisi con visione) ──────────────────────
+DEEPSEEK_API_KEY: str = os.environ.get("DEEPSEEK_API_KEY", "")
+DEEPSEEK_MODEL: str = os.environ.get("DEEPSEEK_MODEL", "deepseek-flash")
+# DeepSeek ridimensiona comunque le immagini lato server: inviarne di più grandi
+# è banda sprecata.
+DEEPSEEK_MAX_SIDE_PX: int = int(os.environ.get("DEEPSEEK_MAX_SIDE_PX", 1024))
+
+# ── Embedding (Ollama / bge-m3) ───────────────────────────────────
+OLLAMA_BASE_URL: str = os.environ.get("OLLAMA_BASE_URL", "http://172.24.24.91:11434")
+OLLAMA_EMBED_MODEL: str = os.environ.get("OLLAMA_EMBED_MODEL", "bge-m3")
+
+# ── Ricerca semantica ─────────────────────────────────────────────
+# Soglia assoluta minima: esclude i risultati palesemente estranei.
+SEARCH_SIMILARITY_FLOOR: float = float(os.environ.get("SEARCH_SIMILARITY_FLOOR", 0.40))
+# Taglio relativo: tiene solo i risultati vicini al migliore della query.
+# bge-m3 comprime le similarità in una fascia stretta e il valore assoluto
+# dipende dalla formulazione, mentre l'ordinamento interno è affidabile.
+SEARCH_RELATIVE_CUTOFF: float = float(os.environ.get("SEARCH_RELATIVE_CUTOFF", 0.90))
+
 # Estensioni da escludere dalla scansione (es. ".cr3,.nef")
 EXCLUDED_EXTS: set = {
     e.strip().lower()
