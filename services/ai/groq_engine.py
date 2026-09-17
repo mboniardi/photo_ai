@@ -7,7 +7,7 @@ import base64
 import logging
 
 from services.ai.base import AIEngine, PhotoAnalysis
-from services.ai.gemini import _build_prompt, _parse_response
+from services.ai.prompt import build_prompt, parse_response
 import config
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ class GroqEngine(AIEngine):
     async def analyze(self, image_bytes: bytes, location_hint: str = "") -> PhotoAnalysis:
         loop = asyncio.get_running_loop()
         b64 = base64.b64encode(image_bytes).decode()
-        prompt = _build_prompt(location_hint)
+        prompt = build_prompt(location_hint)
 
         def _call():
             return self._client.chat.completions.create(
@@ -45,7 +45,7 @@ class GroqEngine(AIEngine):
 
         response = await loop.run_in_executor(None, _call)
         text = response.choices[0].message.content
-        data = _parse_response(text)
+        data = parse_response(text)
 
         return PhotoAnalysis(
             description=data["descrizione"],
