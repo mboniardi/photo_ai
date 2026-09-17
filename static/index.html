@@ -1454,7 +1454,12 @@ createApp({
       if (f.orientation)    payload.orientation = f.orientation;
 
       const data = await apiPost('/api/search', payload);
-      if (data) photos.value = Array.isArray(data) ? data : [];
+      if (data && data.detail) {
+        showToast(data.detail, 'warn');
+        photos.value = [];
+      } else if (data) {
+        photos.value = Array.isArray(data) ? data : [];
+      }
       loading.value = false;
     }
 

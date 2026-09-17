@@ -12,7 +12,7 @@ class TestAIEngineInterface:
         from services.ai.base import AIEngine
 
         class Incomplete(AIEngine):
-            async def embed(self, text): return []
+            pass
 
         with pytest.raises(TypeError):
             Incomplete()
@@ -22,7 +22,6 @@ class TestAIEngineInterface:
 
         class Complete(AIEngine):
             async def analyze(self, image_bytes, location_hint=""): ...
-            async def embed(self, text): return []
 
         engine = Complete()
         assert engine is not None

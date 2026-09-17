@@ -130,6 +130,11 @@ async def _restart_worker():
     from api.queue import get_worker, set_worker
     from services.queue_worker import QueueWorker
     from services.embedding import OllamaEmbedder
+    # Import locale: main.py importa api.settings al modulo, quindi un
+    # `import main` a livello di modulo qui creerebbe un import circolare.
+    # A runtime (quando questa funzione viene chiamata) main è già
+    # completamente inizializzato, quindi l'import locale è sicuro.
+    import main as main_module
 
     old_worker = get_worker()
     if old_worker:
@@ -146,6 +151,7 @@ async def _restart_worker():
                              rpm_limit=rpm, embedder=OllamaEmbedder())
         await worker.start()
         set_worker(worker)
+        main_module.app.state.worker = worker
         logger.info("Worker riavviato con engine=%s", engine_name)
     except Exception as exc:
         logger.error("Impossibile riavviare il worker: %s", exc)

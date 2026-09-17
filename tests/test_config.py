@@ -111,4 +111,3 @@ class TestEmbeddingAndDeepSeekConfig:
         importlib.reload(config)
         assert config.DEEPSEEK_MODEL == "deepseek-flash"
         assert config.DEEPSEEK_MAX_SIDE_PX == 1024
-        assert config.DEEPSEEK_API_KEY == "" or isinstance(config.DEEPSEEK_API_KEY, str)

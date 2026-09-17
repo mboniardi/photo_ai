@@ -80,3 +80,19 @@ class TestDeepSeekSetting:
         from api.settings import engine_api_key
         with pytest.raises(ValueError, match="sconosciuto"):
             engine_api_key("inesistente")
+
+
+class TestRestartWorkerUpdatesAppState:
+    def test_restart_worker_updates_app_state_worker(self, client):
+        """
+        main.py ferma app.state.worker allo shutdown: se _restart_worker
+        aggiorna solo il riferimento globale di api.queue e non
+        app.state.worker, il worker creato da un cambio di impostazioni
+        non viene mai fermato allo shutdown (resta quello originale).
+        """
+        from main import app
+        from api.queue import get_worker
+
+        client.put("/api/settings", json={"ai_engine": "gemini", "gemini_api_key": "test-key"})
+
+        assert app.state.worker is get_worker()

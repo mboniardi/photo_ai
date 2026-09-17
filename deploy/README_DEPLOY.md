@@ -93,6 +93,10 @@ These are not in `deploy.config.ps1` but can be set in `/opt/photo_ai/.env` on t
 | `GEMINI_MODEL` | `gemini-2.5-flash` | Gemini vision model |
 | `OLLAMA_BASE_URL` | `http://172.24.24.91:11434` | Ollama host serving the embedding model |
 | `OLLAMA_EMBED_MODEL` | `bge-m3` | Embedding model, served locally by Ollama |
+| `SEARCH_SIMILARITY_FLOOR` | `0.40` | Absolute minimum cosine similarity — excludes obviously unrelated results |
+| `SEARCH_RELATIVE_CUTOFF` | `0.90` | Relative cutoff vs. the best match — keeps only results close to the top score |
+| `DEEPSEEK_MODEL` | `deepseek-flash` | DeepSeek vision model, used when `ai_engine` is set to `deepseek` |
+| `DEEPSEEK_MAX_SIDE_PX` | `1024` | Max image side sent to DeepSeek before upload |
 | `EXCLUDED_EXTS` | _(from config)_ | Comma-separated extensions to skip (e.g. `.cr3,.nef`) |
 | `MAX_SIDE_PX` | `1280` | Max image side before sending to AI |
 | `JPEG_QUALITY` | `85` | JPEG quality for AI uploads |
@@ -190,6 +194,19 @@ cd /opt/photo_ai && git pull && docker compose up -d --build
 ```
 
 `--build` is required whenever Python code or dependencies change. For static file-only changes it's also required (files are baked into the image via `COPY . .`).
+
+### Aggiornamento a bge-m3
+
+Questo branch sposta l'embedding da Gemini a bge-m3, servito localmente da Ollama. Dopo l'aggiornamento:
+
+1. Verifica che Ollama sia raggiungibile dalla VM all'indirizzo `OLLAMA_BASE_URL`:
+   ```bash
+   curl http://172.24.24.91:11434/api/embed -d '{"model":"bge-m3","input":"prova"}'
+   ```
+2. Esegui `docker compose up -d --build` come sempre.
+3. Vai su Settings → **"Re-indicizza embedding"** e avvia la re-indicizzazione.
+4. **Fino al termine della re-indicizzazione la ricerca semantica non restituisce risultati**: i vettori salvati sono ancora quelli del modello precedente, hanno una dimensione diversa da quelli di bge-m3 e vengono scartati dal controllo di compatibilità in fase di ricerca. Non è un errore: è la migrazione che deve completarsi.
+5. Le due soglie di ricerca (`SEARCH_SIMILARITY_FLOOR`, `SEARCH_RELATIVE_CUTOFF`) possono essere modificate in `.env` in un secondo momento, senza ricostruire l'immagine — basta `docker compose up -d` (senza `--build`) dopo la modifica.
 
 ---
 

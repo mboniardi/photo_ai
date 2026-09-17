@@ -175,4 +175,92 @@ class TestReembedUsesEmbedder:
 
         status = c.get("/api/search/reembed/status").json()
         assert status["running"] is False
-        assert status["done"] == status["total"] == 2
+        assert status["total"] == 2
+        assert status["done"] == 0
+        assert status["failed"] == 2
+        assert status["error"] is not None
+
+    def test_reembed_all_batches_fail_sets_error_and_does_not_claim_success(
+        self, client_with_analyzed_photo, monkeypatch
+    ):
+        """
+        Un embedder che fallisce sempre (es. Ollama irraggiungibile) deve
+        far terminare la re-indicizzazione con "error" impostato, non con
+        un falso successo: altrimenti l'operatore crede che la migrazione
+        sia andata a buon fine mentre nessuna foto è stata rivettorizzata.
+        """
+        import api.search as m
+        import config as cfg
+        from database.photos import get_photo_by_id, update_photo
+
+        class AlwaysFailingEmbedder:
+            @property
+            def dimension(self):
+                return 3
+
+            async def embed(self, text: str) -> list:
+                return [1.0, 0.0, 0.0]
+
+            async def embed_batch(self, texts: list) -> list:
+                raise RuntimeError("Ollama non raggiungibile")
+
+        c, pid = client_with_analyzed_photo
+        update_photo(cfg.LOCAL_DB, pid, description="Un tramonto sul mare",
+                     subject="tramonto", atmosphere="serena",
+                     embedding=json.dumps([5.5, 5.5, 5.5]))
+
+        monkeypatch.setattr(m, "get_embedder", lambda: AlwaysFailingEmbedder())
+        resp = c.post("/api/search/reembed")
+        assert resp.status_code == 200
+
+        # L'embedding vecchio non deve essere toccato.
+        photo = get_photo_by_id(cfg.LOCAL_DB, pid)
+        assert json.loads(photo["embedding"]) == [5.5, 5.5, 5.5]
+
+        status = c.get("/api/search/reembed/status").json()
+        assert status["running"] is False
+        assert status["done"] == 0
+        assert status["failed"] == 1
+        assert status["error"] is not None
+        assert "non re-indicizzate" in status["error"]
+
+    def test_reembed_skips_batch_with_wrong_vector_dimension(
+        self, client_with_analyzed_photo, monkeypatch
+    ):
+        """
+        Se l'embedder restituisce vettori di dimensione diversa da quella
+        dichiarata (es. OLLAMA_EMBED_MODEL punta a un modello sbagliato),
+        il lotto va scartato come fallito — non scritto silenziosamente.
+        """
+        import api.search as m
+        import config as cfg
+        from database.photos import get_photo_by_id, update_photo
+
+        class WrongDimensionEmbedder:
+            @property
+            def dimension(self):
+                return 3
+
+            async def embed(self, text: str) -> list:
+                return [1.0, 0.0, 0.0]
+
+            async def embed_batch(self, texts: list) -> list:
+                # Vettori di dimensione 2 invece dei 3 dichiarati.
+                return [[1.0, 0.0] for _ in texts]
+
+        c, pid = client_with_analyzed_photo
+        update_photo(cfg.LOCAL_DB, pid, description="Un tramonto sul mare",
+                     subject="tramonto", atmosphere="serena",
+                     embedding=json.dumps([5.5, 5.5, 5.5]))
+
+        monkeypatch.setattr(m, "get_embedder", lambda: WrongDimensionEmbedder())
+        resp = c.post("/api/search/reembed")
+        assert resp.status_code == 200
+
+        photo = get_photo_by_id(cfg.LOCAL_DB, pid)
+        assert json.loads(photo["embedding"]) == [5.5, 5.5, 5.5]
+
+        status = c.get("/api/search/reembed/status").json()
+        assert status["failed"] == 1
+        assert status["done"] == 0
+        assert status["error"] is not None

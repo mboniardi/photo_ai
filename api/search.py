@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
-_reembed_state: dict = {"running": False, "done": 0, "total": 0, "error": None}
+_reembed_state: dict = {"running": False, "done": 0, "total": 0, "failed": 0, "error": None}
 
 
 class SearchRequest(BaseModel):
@@ -97,7 +97,7 @@ async def _do_reembed(embedder) -> None:
     global _reembed_state
     import sqlite3
 
-    _reembed_state = {"running": True, "done": 0, "total": 0, "error": None}
+    _reembed_state = {"running": True, "done": 0, "total": 0, "failed": 0, "error": None}
     try:
         conn = sqlite3.connect(config.LOCAL_DB)
         conn.row_factory = sqlite3.Row
@@ -128,6 +128,16 @@ async def _do_reembed(embedder) -> None:
         if batch_texts:
             await _flush_batch(embedder, batch_ids, batch_texts)
 
+        # Una re-indicizzazione con lotti falliti non è un successo: il
+        # frontend interpreta "error" assente come "Completato", ma i
+        # vettori delle foto in errore restano quelli vecchi (dimensione
+        # diversa) e la ricerca semantica continuerà a non trovarli.
+        if _reembed_state["failed"]:
+            _reembed_state["error"] = (
+                f"{_reembed_state['failed']} foto non re-indicizzate — "
+                "controlla che Ollama sia raggiungibile"
+            )
+
     except Exception as exc:
         logger.error("reembed globale fallito: %s", exc)
         _reembed_state["error"] = str(exc)
@@ -142,14 +152,23 @@ async def _flush_batch(embedder, ids: list, texts: list) -> None:
         vectors = await embedder.embed_batch(texts)
     except Exception as exc:
         logger.warning("reembed fallito per il lotto di %d foto: %s", len(ids), exc)
-        _reembed_state["done"] += len(ids)
+        _reembed_state["failed"] += len(ids)
         return
     if len(vectors) != len(ids):
         logger.warning(
             "reembed: l'embedder ha restituito %d vettori per %d testi — lotto saltato",
             len(vectors), len(ids),
         )
-        _reembed_state["done"] += len(ids)
+        _reembed_state["failed"] += len(ids)
+        return
+    expected_dim = embedder.dimension
+    wrong = [v for v in vectors if len(v) != expected_dim]
+    if wrong:
+        logger.warning(
+            "reembed: vettore di dimensione %d invece di %d — lotto saltato",
+            len(wrong[0]), expected_dim,
+        )
+        _reembed_state["failed"] += len(ids)
         return
     for photo_id, vector in zip(ids, vectors):
         update_photo(config.LOCAL_DB, photo_id, embedding=json.dumps(vector))
