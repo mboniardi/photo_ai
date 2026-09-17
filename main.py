@@ -149,7 +149,9 @@ async def on_startup():
         default_rpm = config.GEMINI_PAID_RPM_LIMIT if engine_name == "gemini_paid" else config.ANALYSIS_RPM_LIMIT
         rpm = int(get_setting(config.LOCAL_DB, "analysis_rpm_limit") or default_rpm)
 
-        worker = QueueWorker(engine=engine, db_path=config.LOCAL_DB, rpm_limit=rpm)
+        from services.embedding import OllamaEmbedder
+        worker = QueueWorker(engine=engine, db_path=config.LOCAL_DB, rpm_limit=rpm,
+                             embedder=OllamaEmbedder())
         await worker.start()
         set_worker(worker)
         app.state.worker = worker

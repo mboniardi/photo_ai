@@ -61,6 +61,3 @@ class GroqEngine(AIEngine):
             longitude=data.get("luogo_lon"),
             ai_engine=f"groq/{config.GROQ_MODEL}",
         )
-
-    async def embed(self, text: str) -> list:
-        return []  # Groq non offre API di embedding

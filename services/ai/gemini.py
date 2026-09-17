@@ -1,12 +1,11 @@
 """
 Implementazione AIEngine per Google Gemini.
 SDK: google-genai (API v1 stabile).
-Modelli: GEMINI_MODEL (visione), GEMINI_EMBED_MODEL (embedding).
+Modello: GEMINI_MODEL (visione).
 """
 import asyncio
 import logging
 
-import httpx
 from google import genai
 from google.genai import types
 
@@ -54,17 +53,3 @@ class GeminiEngine(AIEngine):
             latitude=data.get("luogo_lat"),
             longitude=data.get("luogo_lon"),
         )
-
-    async def embed(self, text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> list:
-        if not config.GEMINI_EMBED_MODEL:
-            return []
-        model = config.GEMINI_EMBED_MODEL.removeprefix("models/")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent"
-        payload = {
-            "content": {"parts": [{"text": text}]},
-            "taskType": task_type,
-        }
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(url, json=payload, params={"key": self._api_key})
-            resp.raise_for_status()
-            return resp.json()["embedding"]["values"]

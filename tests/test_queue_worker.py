@@ -26,8 +26,6 @@ def make_fake_engine() -> AIEngine:
                 weaknesses=None,
                 ai_engine="fake",
             )
-        async def embed(self, text):
-            return [0.1] * 768
     return FakeEngine()
 
 

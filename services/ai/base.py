@@ -59,10 +59,3 @@ class AIEngine(ABC):
         location_hint: stringa opzionale con il nome del luogo noto
                        (usata nel prompt se la foto ha location_source='exif').
         """
-
-    @abstractmethod
-    async def embed(self, text: str) -> list:
-        """
-        Genera l'embedding vettoriale di un testo.
-        Ritorna una lista di float (768 dimensioni per text-embedding-004).
-        """

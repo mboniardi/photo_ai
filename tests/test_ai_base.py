@@ -17,15 +17,6 @@ class TestAIEngineInterface:
         with pytest.raises(TypeError):
             Incomplete()
 
-    def test_concrete_subclass_must_implement_embed(self):
-        from services.ai.base import AIEngine
-
-        class Incomplete(AIEngine):
-            async def analyze(self, image_bytes, location_hint=""): ...
-
-        with pytest.raises(TypeError):
-            Incomplete()
-
     def test_complete_subclass_instantiates(self):
         from services.ai.base import AIEngine
 
@@ -35,6 +26,26 @@ class TestAIEngineInterface:
 
         engine = Complete()
         assert engine is not None
+
+
+class TestAIEngineHasNoEmbed:
+    def test_embed_is_not_part_of_the_interface(self):
+        from services.ai.base import AIEngine
+        assert not hasattr(AIEngine, "embed")
+
+    def test_concrete_engine_needs_only_analyze(self):
+        from services.ai.base import AIEngine, PhotoAnalysis
+
+        class MinimalEngine(AIEngine):
+            async def analyze(self, image_bytes, location_hint=""):
+                return PhotoAnalysis(
+                    description="x", technical_score=5.0, aesthetic_score=5.0,
+                    subject="x", atmosphere="x", colors=[], strengths="x",
+                    weaknesses=None, ai_engine="minimal",
+                )
+
+        engine = MinimalEngine()  # non deve sollevare TypeError
+        assert engine.max_side_px is None
 
 
 class TestPhotoAnalysis:
