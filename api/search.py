@@ -1,4 +1,4 @@
-"""Route /api/search — ricerca semantica con embedding Gemini."""
+"""Route /api/search — ricerca semantica con embedding tramite Embedder."""
 import json
 import logging
 import asyncio
@@ -7,7 +7,6 @@ from pydantic import BaseModel
 from typing import Optional
 
 import config
-from database.settings import get_setting
 from services.search import semantic_search, is_quality_query, extract_limit
 
 logger = logging.getLogger(__name__)
@@ -31,18 +30,10 @@ class SearchRequest(BaseModel):
     limit: Optional[int] = None
 
 
-async def _get_embed_engine():
-    from services.ai.gemini import GeminiEngine
-    engine_name = get_setting(config.LOCAL_DB, "ai_engine") or "gemini"
-    if engine_name == "gemini_paid":
-        api_key = (get_setting(config.LOCAL_DB, "gemini_paid_api_key") or config.GEMINI_PAID_API_KEY
-                   or get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY)
-    else:
-        api_key = (get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
-                   or get_setting(config.LOCAL_DB, "gemini_paid_api_key") or config.GEMINI_PAID_API_KEY)
-    if not api_key:
-        raise HTTPException(status_code=400, detail="Gemini API key non configurata")
-    return GeminiEngine(api_key=api_key)
+def get_embedder():
+    """Fabbrica dell'embedder. Sostituita nei test tramite monkeypatch."""
+    from services.embedding import OllamaEmbedder
+    return OllamaEmbedder()
 
 
 @router.post("")
@@ -50,11 +41,18 @@ async def search_photos(req: SearchRequest):
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query non può essere vuota")
 
-    engine = await _get_embed_engine()
-    query_embedding = await engine.embed(req.query, task_type="RETRIEVAL_QUERY")
+    embedder = get_embedder()
+    try:
+        query_embedding = await embedder.embed(req.query)
+    except Exception as exc:
+        logger.error("Embedding della query fallito: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Servizio di embedding non raggiungibile — controlla che Ollama sia attivo",
+        )
 
     if not query_embedding:
-        raise HTTPException(status_code=503, detail="Embedding non disponibile — controlla la configurazione Gemini")
+        raise HTTPException(status_code=503, detail="Embedding non disponibile")
 
     is_quality = is_quality_query(req.query)
     limit = req.limit if req.limit is not None else extract_limit(req.query)
@@ -87,15 +85,17 @@ async def reembed_all(background_tasks: BackgroundTasks):
     global _reembed_state
     if _reembed_state["running"]:
         raise HTTPException(status_code=409, detail="Re-indicizzazione già in corso")
-    engine = await _get_embed_engine()
-    background_tasks.add_task(_do_reembed, engine)
+    embedder = get_embedder()
+    background_tasks.add_task(_do_reembed, embedder)
     return {"ok": True, "message": "Re-indicizzazione avviata in background"}
 
 
-async def _do_reembed(engine) -> None:
+REEMBED_BATCH_SIZE = 32
+
+
+async def _do_reembed(embedder) -> None:
     global _reembed_state
     import sqlite3
-    from database.photos import update_photo
 
     _reembed_state = {"running": True, "done": 0, "total": 0, "error": None}
     try:
@@ -109,24 +109,42 @@ async def _do_reembed(engine) -> None:
 
         _reembed_state["total"] = len(rows)
 
+        batch_ids, batch_texts = [], []
         for row in rows:
-            embed_text = " ".join(filter(None, [
+            text = " ".join(filter(None, [
                 row["description"], row["subject"],
                 row["atmosphere"], row["location_name"],
-            ]))
-            if not embed_text.strip():
+            ])).strip()
+            if not text:
                 _reembed_state["done"] += 1
                 continue
-            try:
-                embedding = await engine.embed(embed_text)
-                update_photo(config.LOCAL_DB, row["id"], embedding=json.dumps(embedding))
-            except Exception as exc:
-                logger.warning("reembed fallito per photo_id=%s: %s", row["id"], exc)
-            _reembed_state["done"] += 1
-            await asyncio.sleep(0)
+            batch_ids.append(row["id"])
+            batch_texts.append(text)
+
+            if len(batch_texts) >= REEMBED_BATCH_SIZE:
+                await _flush_batch(embedder, batch_ids, batch_texts)
+                batch_ids, batch_texts = [], []
+
+        if batch_texts:
+            await _flush_batch(embedder, batch_ids, batch_texts)
 
     except Exception as exc:
         logger.error("reembed globale fallito: %s", exc)
         _reembed_state["error"] = str(exc)
     finally:
         _reembed_state["running"] = False
+
+
+async def _flush_batch(embedder, ids: list, texts: list) -> None:
+    """Vettorizza un lotto e salva. Un lotto fallito non ferma gli altri."""
+    from database.photos import update_photo
+    try:
+        vectors = await embedder.embed_batch(texts)
+    except Exception as exc:
+        logger.warning("reembed fallito per il lotto di %d foto: %s", len(ids), exc)
+        _reembed_state["done"] += len(ids)
+        return
+    for photo_id, vector in zip(ids, vectors):
+        update_photo(config.LOCAL_DB, photo_id, embedding=json.dumps(vector))
+        _reembed_state["done"] += 1
+    await asyncio.sleep(0)

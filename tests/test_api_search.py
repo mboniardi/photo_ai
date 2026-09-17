@@ -29,36 +29,41 @@ def client_with_analyzed_photo(tmp_path, monkeypatch):
     return TestClient(app, cookies={"photo_ai_session": token}), pid
 
 
-class FakeEngine:
+class FakeEmbedder:
+    @property
+    def dimension(self):
+        return 3
+
     async def embed(self, text: str) -> list:
         return [1.0, 0.0, 0.0]
 
+    async def embed_batch(self, texts: list) -> list:
+        return [[1.0, 0.0, 0.0] for _ in texts]
 
-def _async_fake_engine():
-    async def _inner():
-        return FakeEngine()
-    return _inner
+
+def _fake_embedder_factory():
+    return lambda: FakeEmbedder()
 
 
 class TestSearchPhotos:
     def test_returns_200(self, client_with_analyzed_photo, monkeypatch):
         c, pid = client_with_analyzed_photo
         import api.search as m
-        monkeypatch.setattr(m, "_get_engine", _async_fake_engine())
+        monkeypatch.setattr(m, "get_embedder", _fake_embedder_factory())
         resp = c.post("/api/search", json={"query": "paesaggi"})
         assert resp.status_code == 200
 
     def test_returns_list(self, client_with_analyzed_photo, monkeypatch):
         c, pid = client_with_analyzed_photo
         import api.search as m
-        monkeypatch.setattr(m, "_get_engine", _async_fake_engine())
+        monkeypatch.setattr(m, "get_embedder", _fake_embedder_factory())
         data = c.post("/api/search", json={"query": "paesaggi"}).json()
         assert isinstance(data, list)
 
     def test_result_has_similarity(self, client_with_analyzed_photo, monkeypatch):
         c, pid = client_with_analyzed_photo
         import api.search as m
-        monkeypatch.setattr(m, "_get_engine", _async_fake_engine())
+        monkeypatch.setattr(m, "get_embedder", _fake_embedder_factory())
         data = c.post("/api/search", json={"query": "paesaggi"}).json()
         assert len(data) == 1
         assert "similarity" in data[0]
@@ -66,14 +71,14 @@ class TestSearchPhotos:
     def test_empty_query_returns_400(self, client_with_analyzed_photo, monkeypatch):
         c, _ = client_with_analyzed_photo
         import api.search as m
-        monkeypatch.setattr(m, "_get_engine", _async_fake_engine())
+        monkeypatch.setattr(m, "get_embedder", _fake_embedder_factory())
         resp = c.post("/api/search", json={"query": "   "})
         assert resp.status_code == 400
 
     def test_with_orientation_filter(self, client_with_analyzed_photo, monkeypatch):
         c, pid = client_with_analyzed_photo
         import api.search as m
-        monkeypatch.setattr(m, "_get_engine", _async_fake_engine())
+        monkeypatch.setattr(m, "get_embedder", _fake_embedder_factory())
         data = c.post("/api/search",
                       json={"query": "paesaggi", "orientation": "horizontal"}).json()
         assert len(data) == 1
@@ -81,8 +86,43 @@ class TestSearchPhotos:
     def test_vertical_filter_excludes_photo(self, client_with_analyzed_photo, monkeypatch):
         c, pid = client_with_analyzed_photo
         import api.search as m
-        monkeypatch.setattr(m, "_get_engine", _async_fake_engine())
+        monkeypatch.setattr(m, "get_embedder", _fake_embedder_factory())
         # Photo is 100x80 (horizontal); vertical filter should return 0
         data = c.post("/api/search",
                       json={"query": "paesaggi", "orientation": "vertical"}).json()
         assert len(data) == 0
+
+
+class TestReembedUsesEmbedder:
+    def test_reembed_writes_new_vectors(self, client_with_analyzed_photo, monkeypatch):
+        import api.search as m
+        import config as cfg
+        from database.photos import get_photo_by_id, update_photo
+        c, pid = client_with_analyzed_photo
+        # La foto della fixture non ha testo: senza descrizione il re-embed
+        # la salta, perché non c'è nulla da vettorizzare.
+        update_photo(cfg.LOCAL_DB, pid, description="Un tramonto sul mare",
+                     subject="tramonto", atmosphere="serena",
+                     embedding=json.dumps([9.9, 9.9, 9.9]))
+
+        monkeypatch.setattr(m, "get_embedder", _fake_embedder_factory())
+        resp = c.post("/api/search/reembed")
+        assert resp.status_code == 200
+
+        photo = get_photo_by_id(cfg.LOCAL_DB, pid)
+        assert json.loads(photo["embedding"]) == [1.0, 0.0, 0.0]
+
+    def test_reembed_skips_photos_without_text(self, client_with_analyzed_photo, monkeypatch):
+        import api.search as m
+        import config as cfg
+        from database.photos import get_photo_by_id, update_photo
+        c, pid = client_with_analyzed_photo  # fixture: nessuna descrizione
+        # Sentinella diversa da quella che ritorna FakeEmbedder, così
+        # "saltata" e "rivettorizzata" sono distinguibili.
+        update_photo(cfg.LOCAL_DB, pid, embedding=json.dumps([7.7, 7.7, 7.7]))
+
+        monkeypatch.setattr(m, "get_embedder", _fake_embedder_factory())
+        c.post("/api/search/reembed")
+
+        photo = get_photo_by_id(cfg.LOCAL_DB, pid)
+        assert json.loads(photo["embedding"]) == [7.7, 7.7, 7.7]
