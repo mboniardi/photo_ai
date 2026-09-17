@@ -126,3 +126,53 @@ class TestReembedUsesEmbedder:
 
         photo = get_photo_by_id(cfg.LOCAL_DB, pid)
         assert json.loads(photo["embedding"]) == [7.7, 7.7, 7.7]
+
+    def test_reembed_leaves_embeddings_when_batch_count_mismatches(
+        self, client_with_analyzed_photo, monkeypatch
+    ):
+        import api.search as m
+        import config as cfg
+        from database.photos import get_photo_by_id, insert_photo, update_photo
+
+        class ShortBatchEmbedder:
+            @property
+            def dimension(self):
+                return 3
+
+            async def embed(self, text: str) -> list:
+                return [1.0, 0.0, 0.0]
+
+            async def embed_batch(self, texts: list) -> list:
+                # Risposta ben formata ma con meno vettori dei testi inviati:
+                # solo il primo, invece di uno per ogni testo del lotto.
+                return [[1.0, 0.0, 0.0]] if texts else []
+
+        c, pid = client_with_analyzed_photo
+        # Sentinella diversa da quella che ritornerebbe l'embedder, così
+        # "lasciata intatta" e "rivettorizzata" sono distinguibili.
+        update_photo(cfg.LOCAL_DB, pid, description="Un tramonto sul mare",
+                     subject="tramonto", atmosphere="serena",
+                     embedding=json.dumps([5.5, 5.5, 5.5]))
+
+        # Una seconda foto analizzata con testo, per portare il lotto a 2
+        # testi mentre l'embedder finto ne ritorna solo 1.
+        pid2 = insert_photo(cfg.LOCAL_DB, file_path="/tmp/test2.jpg",
+                             folder_path="/tmp", filename="test2.jpg",
+                             format="jpg", file_size=1000, width=100, height=80)
+        update_photo(cfg.LOCAL_DB, pid2, description="Un bosco d'autunno",
+                     subject="bosco", atmosphere="malinconica",
+                     analyzed_at="2023-06-01T10:00:00",
+                     embedding=json.dumps([6.6, 6.6, 6.6]))
+
+        monkeypatch.setattr(m, "get_embedder", lambda: ShortBatchEmbedder())
+        resp = c.post("/api/search/reembed")
+        assert resp.status_code == 200
+
+        photo1 = get_photo_by_id(cfg.LOCAL_DB, pid)
+        photo2 = get_photo_by_id(cfg.LOCAL_DB, pid2)
+        assert json.loads(photo1["embedding"]) == [5.5, 5.5, 5.5]
+        assert json.loads(photo2["embedding"]) == [6.6, 6.6, 6.6]
+
+        status = c.get("/api/search/reembed/status").json()
+        assert status["running"] is False
+        assert status["done"] == status["total"] == 2

@@ -144,6 +144,13 @@ async def _flush_batch(embedder, ids: list, texts: list) -> None:
         logger.warning("reembed fallito per il lotto di %d foto: %s", len(ids), exc)
         _reembed_state["done"] += len(ids)
         return
+    if len(vectors) != len(ids):
+        logger.warning(
+            "reembed: l'embedder ha restituito %d vettori per %d testi — lotto saltato",
+            len(vectors), len(ids),
+        )
+        _reembed_state["done"] += len(ids)
+        return
     for photo_id, vector in zip(ids, vectors):
         update_photo(config.LOCAL_DB, photo_id, embedding=json.dumps(vector))
         _reembed_state["done"] += 1
