@@ -106,15 +106,7 @@ async def _restart_worker():
         default_rpm = config.GEMINI_PAID_RPM_LIMIT if engine_name == "gemini_paid" else config.ANALYSIS_RPM_LIMIT
         rpm = int(get_setting(config.LOCAL_DB, "analysis_rpm_limit") or default_rpm)
 
-        embed_engine = None
-        if engine_name == "groq":
-            _gem_key = (get_setting(config.LOCAL_DB, "gemini_api_key") or config.GEMINI_API_KEY
-                        or get_setting(config.LOCAL_DB, "gemini_paid_api_key") or config.GEMINI_PAID_API_KEY)
-            if _gem_key:
-                embed_engine = GeminiEngine(api_key=_gem_key)
-
-        worker = QueueWorker(engine=engine, db_path=config.LOCAL_DB, rpm_limit=rpm,
-                             embed_engine=embed_engine)
+        worker = QueueWorker(engine=engine, db_path=config.LOCAL_DB, rpm_limit=rpm)
         await worker.start()
         set_worker(worker)
         logger.info("Worker riavviato con engine=%s", engine_name)
