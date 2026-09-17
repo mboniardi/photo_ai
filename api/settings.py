@@ -43,6 +43,8 @@ def engine_api_key(engine_name: str) -> str:
         "groq":        ("groq_api_key", config.GROQ_API_KEY),
         "deepseek":    ("deepseek_api_key", config.DEEPSEEK_API_KEY),
     }
+    if engine_name not in mapping:
+        raise ValueError(f"Engine sconosciuto: {engine_name}")
     key_name, fallback = mapping[engine_name]
     return get_setting(config.LOCAL_DB, key_name) or fallback
 

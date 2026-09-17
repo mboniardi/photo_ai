@@ -68,3 +68,15 @@ class TestDeepSeekSetting:
         from api.settings import build_engine
         with pytest.raises(ValueError, match="sconosciuto"):
             build_engine("inesistente", api_key="x")
+
+    def test_engine_api_key_returns_configured_key(self, client):
+        import config
+        from database.settings import set_setting
+        from api.settings import engine_api_key
+        set_setting(config.LOCAL_DB, key="groq_api_key", value="gsk-configured")
+        assert engine_api_key("groq") == "gsk-configured"
+
+    def test_engine_api_key_rejects_unknown(self, client):
+        from api.settings import engine_api_key
+        with pytest.raises(ValueError, match="sconosciuto"):
+            engine_api_key("inesistente")
