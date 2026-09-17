@@ -39,11 +39,13 @@ class QueueWorker:
         engine: AIEngine,
         db_path: Optional[str] = None,
         rpm_limit: Optional[int] = None,
-        embed_engine: Optional[AIEngine] = None,  # non più usato, mantenuto per compatibilità
+        embedder=None,
+        **kwargs,  # Ignora parametri legacy come embed_engine
     ):
-        self._engine   = engine
-        self._db_path  = db_path
-        self._rpm      = rpm_limit  # None = nessun limite
+        self._engine    = engine
+        self._embedder  = embedder
+        self._db_path   = db_path
+        self._rpm       = rpm_limit  # None = nessun limite
         self.is_running = False
         self.is_paused  = False
         self._task: Optional[asyncio.Task] = None
@@ -122,11 +124,15 @@ class QueueWorker:
                 analysis.atmosphere,
                 analysis.location_name or photo["location_name"],
             ]))
-            try:
-                embedding = await self._engine.embed(embed_text)
-            except Exception as emb_exc:
-                logger.warning("Embedding non disponibile per photo_id=%s: %s", photo_id, emb_exc)
-                embedding = []
+            embedding = []
+            if self._embedder is not None:
+                try:
+                    embedding = await self._embedder.embed(embed_text)
+                except Exception as emb_exc:
+                    logger.warning(
+                        "Embedding non disponibile per photo_id=%s: %s",
+                        photo_id, emb_exc,
+                    )
 
             # Aggiorna la foto nel DB
             update_photo(
