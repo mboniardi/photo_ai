@@ -5,6 +5,7 @@ from typing import Optional
 
 import numpy as np
 
+import config
 from database.photos import get_photos
 
 QUALITY_KEYWORDS = frozenset({
@@ -12,8 +13,6 @@ QUALITY_KEYWORDS = frozenset({
     "meilleurs", "meilleures",
     "best", "excellent",
 })
-
-SIMILARITY_THRESHOLD = 0.55
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -38,11 +37,12 @@ def extract_limit(query: str) -> Optional[int]:
 
 def semantic_search(
     db_path: Optional[str],
-    query_embedding: list[float],
+    query_embedding: list,
     *,
     is_quality: bool = False,
     limit: Optional[int] = None,
-    threshold: float = SIMILARITY_THRESHOLD,
+    floor: Optional[float] = None,
+    relative_cutoff: Optional[float] = None,
     folder_path: Optional[str] = None,
     is_favorite: Optional[bool] = None,
     is_trash: Optional[bool] = None,
@@ -52,7 +52,11 @@ def semantic_search(
     date_to: Optional[str] = None,
     location: Optional[str] = None,
     orientation: Optional[str] = None,
-) -> list[dict]:
+) -> list:
+    floor = config.SEARCH_SIMILARITY_FLOOR if floor is None else floor
+    relative = config.SEARCH_RELATIVE_CUTOFF if relative_cutoff is None else relative_cutoff
+    expected_dim = len(query_embedding)
+
     photos = get_photos(
         db_path,
         analyzed_only=True,
@@ -68,24 +72,29 @@ def semantic_search(
         limit=100_000,
     )
 
-    results: list[dict] = []
+    results: list = []
     for p in photos:
         if p["embedding"] is None:
             continue
         emb = json.loads(p["embedding"])
-        if not emb:
+        # Vettori di un modello precedente: lunghezza diversa, non confrontabili.
+        if not emb or len(emb) != expected_dim:
             continue
         sim = cosine_similarity(query_embedding, emb)
-        if sim < threshold:
+        if sim < floor:
             continue
         photo_dict = dict(p)
         photo_dict["similarity"] = round(sim, 4)
         results.append(photo_dict)
 
+    # Taglio relativo: tiene solo ciò che è vicino al migliore di questa query.
+    if results and relative > 0:
+        best = max(r["similarity"] for r in results)
+        results = [r for r in results if r["similarity"] >= relative * best]
+
     if is_quality:
-        # "le migliori foto di X": la similarity ha già filtrato per X,
-        # ora ordina per qualità (overall_score) con similarity come tiebreaker
-        results.sort(key=lambda r: (r.get("overall_score") or 0.0, r["similarity"]), reverse=True)
+        results.sort(key=lambda r: (r.get("overall_score") or 0.0, r["similarity"]),
+                     reverse=True)
     else:
         results.sort(key=lambda r: r["similarity"], reverse=True)
 

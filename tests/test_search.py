@@ -225,3 +225,59 @@ class TestSemanticSearch:
         results = semantic_search(db, [0.9, 0.1, 0.0], is_trash=False)
         ids = [r["id"] for r in results]
         assert p2 not in ids
+
+
+class TestCutoffStrategy:
+    def _photo(self, db, embedding, score=5.0, name="x.jpg"):
+        import json as _json
+        from database.photos import insert_photo, update_photo
+        pid = insert_photo(db, file_path=f"/tmp/{name}", folder_path="/tmp",
+                           filename=name, format="jpg", file_size=1,
+                           width=10, height=10)
+        update_photo(db, pid, embedding=_json.dumps(embedding),
+                     overall_score=score, analyzed_at="2026-01-01T00:00:00")
+        return pid
+
+    def test_floor_excludes_low_similarity(self, tmp_db):
+        from services.search import semantic_search
+        # similarità 1.0 col primo, 0.0 col secondo
+        self._photo(tmp_db, [1.0, 0.0], name="alto.jpg")
+        self._photo(tmp_db, [0.0, 1.0], name="basso.jpg")
+        results = semantic_search(tmp_db, [1.0, 0.0], floor=0.40,
+                                  relative_cutoff=0.0)
+        assert [r["filename"] for r in results] == ["alto.jpg"]
+
+    def test_relative_cutoff_drops_the_tail(self, tmp_db):
+        from services.search import semantic_search
+        # taglio a 0.90 x 1.000 = 0.900: passa 0.922, non passa 0.707
+        self._photo(tmp_db, [1.0, 0.0], name="primo.jpg")     # cos = 1.000
+        self._photo(tmp_db, [1.0, 0.42], name="vicino.jpg")   # cos = 0.922
+        self._photo(tmp_db, [1.0, 1.0], name="lontano.jpg")   # cos = 0.707
+        results = semantic_search(tmp_db, [1.0, 0.0], floor=0.0,
+                                  relative_cutoff=0.90)
+        names = [r["filename"] for r in results]
+        assert "primo.jpg" in names
+        assert "vicino.jpg" in names
+        assert "lontano.jpg" not in names
+
+    def test_skips_vectors_of_wrong_dimension(self, tmp_db):
+        from services.search import semantic_search
+        self._photo(tmp_db, [1.0, 0.0], name="giusto.jpg")
+        self._photo(tmp_db, [1.0, 0.0, 0.0], name="vecchio.jpg")
+        results = semantic_search(tmp_db, [1.0, 0.0], floor=0.0,
+                                  relative_cutoff=0.0)
+        assert [r["filename"] for r in results] == ["giusto.jpg"]
+
+    def test_empty_result_when_nothing_passes_floor(self, tmp_db):
+        from services.search import semantic_search
+        self._photo(tmp_db, [0.0, 1.0], name="estraneo.jpg")
+        results = semantic_search(tmp_db, [1.0, 0.0], floor=0.40)
+        assert results == []
+
+    def test_uses_config_defaults(self, tmp_db, monkeypatch):
+        import config
+        from services.search import semantic_search
+        monkeypatch.setattr(config, "SEARCH_SIMILARITY_FLOOR", 0.99)
+        monkeypatch.setattr(config, "SEARCH_RELATIVE_CUTOFF", 0.0)
+        self._photo(tmp_db, [1.0, 0.42], name="sotto.jpg")
+        assert semantic_search(tmp_db, [1.0, 0.0]) == []
