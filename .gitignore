@@ -9,3 +9,6 @@ __pycache__/
 .pytest_cache/
 deploy/cache/
 deploy/vms/
+
+# Workspace di lavoro subagent-driven-development (scratch, non versionato)
+.superpowers/
