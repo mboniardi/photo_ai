@@ -43,6 +43,13 @@ DEEPSEEK_MODEL: str = os.environ.get("DEEPSEEK_MODEL", "deepseek-flash")
 # DeepSeek ridimensiona comunque le immagini lato server: inviarne di più grandi
 # è banda sprecata.
 DEEPSEEK_MAX_SIDE_PX: int = int(os.environ.get("DEEPSEEK_MAX_SIDE_PX", 1024))
+# deepseek-flash e' un modello di ragionamento: con "enabled" spende migliaia di
+# token nella catena di pensiero prima di rispondere (misurati ~6000 per foto,
+# contro ~330 di risposta utile), e se il budget si esaurisce prima restituisce
+# un contenuto vuoto. "disabled" e' il default perche' per descrivere una foto
+# il ragionamento non aggiunge nulla e costa 19 volte tanto.
+DEEPSEEK_THINKING: str = os.environ.get("DEEPSEEK_THINKING", "disabled")
+DEEPSEEK_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_MAX_TOKENS", 2000))
 
 # ── Embedding (Ollama / bge-m3) ───────────────────────────────────
 OLLAMA_BASE_URL: str = os.environ.get("OLLAMA_BASE_URL", "http://172.24.24.91:11434")

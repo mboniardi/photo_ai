@@ -51,8 +51,11 @@ class DeepSeekEngine(AIEngine):
                      "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
                 ],
             }],
-            "max_tokens": 1024,
+            "max_tokens": config.DEEPSEEK_MAX_TOKENS,
             "temperature": 0.2,
+            # Senza questo il modello consuma il budget ragionando e "content"
+            # torna vuoto: parse_response fallirebbe su ogni foto.
+            "thinking": {"type": config.DEEPSEEK_THINKING},
         }
 
         async with httpx.AsyncClient(timeout=self._timeout) as client:

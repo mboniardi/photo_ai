@@ -118,3 +118,30 @@ class TestAnalyze:
         _patch_httpx(monkeypatch, status_code=401)
         with pytest.raises(httpx.HTTPError):
             await DeepSeekEngine(api_key="k").analyze(b"x")
+
+
+class TestThinkingAndTokenBudget:
+    """deepseek-flash e' un modello di ragionamento: senza disattivarlo consuma
+    l'intero budget di token nella catena di pensiero e restituisce content vuoto."""
+
+    async def test_disables_thinking_by_default(self, monkeypatch):
+        from services.ai.deepseek import DeepSeekEngine
+        rec = _patch_httpx(monkeypatch)
+        await DeepSeekEngine(api_key="k").analyze(b"x")
+        assert rec["json"]["thinking"] == {"type": "disabled"}
+
+    async def test_token_budget_comes_from_config(self, monkeypatch):
+        import config
+        from services.ai.deepseek import DeepSeekEngine
+        monkeypatch.setattr(config, "DEEPSEEK_MAX_TOKENS", 4321)
+        rec = _patch_httpx(monkeypatch)
+        await DeepSeekEngine(api_key="k").analyze(b"x")
+        assert rec["json"]["max_tokens"] == 4321
+
+    async def test_thinking_mode_is_configurable(self, monkeypatch):
+        import config
+        from services.ai.deepseek import DeepSeekEngine
+        monkeypatch.setattr(config, "DEEPSEEK_THINKING", "enabled")
+        rec = _patch_httpx(monkeypatch)
+        await DeepSeekEngine(api_key="k").analyze(b"x")
+        assert rec["json"]["thinking"] == {"type": "enabled"}
