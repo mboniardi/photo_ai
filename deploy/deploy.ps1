@@ -65,6 +65,7 @@ if ($oldVMs) {
 
 # Generate unique VM name and secret key
 $VM_NAME    = "$VM_NAME_PREFIX-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+if (-not $HEALTH_NAS_GRACE_SEC) { $HEALTH_NAS_GRACE_SEC = 120 }
 $SECRET_KEY = -join ((0..31) | ForEach-Object { '{0:x2}' -f (Get-Random -Max 256) })
 if (-not $CONSOLE_PASSWD) { Write-Error "CONSOLE_PASSWD not set in deploy.config.ps1"; exit 1 }
 Write-Host "  New VM name: $VM_NAME"
@@ -297,13 +298,31 @@ if (-not $healthy) {
 # ═══════════════════════════════════════════════════════════════════
 Write-Host "`n[Phase 6] Smoke tests" -ForegroundColor Cyan
 
-# GET /health → status == "ok" or "degraded" (NAS may not be mounted yet)
+# GET /health → must reach "ok". "degraded" means the NAS share is not mounted:
+# the app runs, but on an empty database with no photos. Accepting it here would
+# let Phase 7 delete the working VM and leave a useless one in its place.
+# The NAS mount can lag the first boot, so allow a grace window before giving up.
 $healthBody = $resp.Content | ConvertFrom-Json
-if ($healthBody.status -notin @("ok", "degraded")) {
-    Write-Error "Unexpected /health status: $($healthBody.status)"
+$graceElapsed = 0
+while ($healthBody.status -eq "degraded" -and $graceElapsed -lt $HEALTH_NAS_GRACE_SEC) {
+    Write-Host "  /health → degraded (nas: $($healthBody.nas)) — waiting for the NAS mount…" -ForegroundColor DarkGray
+    Start-Sleep -Seconds $HEALTH_INTERVAL_SEC
+    $graceElapsed += $HEALTH_INTERVAL_SEC
+    try {
+        $resp = Invoke-WebRequest "http://${VM_STATIC_IP}:${APP_PORT}/health" `
+                                  -UseBasicParsing -TimeoutSec 5
+        $healthBody = $resp.Content | ConvertFrom-Json
+    } catch { }
+}
+if ($healthBody.status -ne "ok") {
+    Write-Error "/health is '$($healthBody.status)' (db: $($healthBody.db), nas: $($healthBody.nas)) after ${graceElapsed}s of grace."
+    Write-Error "The new VM is NOT healthy and the old one has been left in place — restart it to resume service."
+    Write-Error "Most likely the SMB share did not mount: check NAS_SERVER / NAS_SHARE / NAS_USER / NAS_PASSWORD in deploy.config.ps1,"
+    Write-Error "then inspect /etc/fstab and 'mount | grep /mnt/nas' on $VM_NAME."
+    Write-Error "To remove the failed VM: Stop-VM '$VM_NAME' -Force; Remove-VM '$VM_NAME' -Force; Remove-Item '$workingVhdx' -Force"
     exit 1
 }
-Write-Host "  /health → $($healthBody.status) (version: $($healthBody.version))"
+Write-Host "  /health → ok (db: $($healthBody.db), nas: $($healthBody.nas), version: $($healthBody.version))"
 
 # GET /auth/login → must not be 5xx
 try {
