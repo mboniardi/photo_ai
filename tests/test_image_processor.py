@@ -207,3 +207,73 @@ class TestGenerateThumbnail:
         result = generate_thumbnail(path, size=400)
         out = Image.open(io.BytesIO(result))
         assert out.width > out.height  # landscape invariato
+
+
+class TestDecodeAtReducedScale:
+    """exif_transpose() forza la decodifica a piena risoluzione, e thumbnail()
+    arriva quando l'immagine e' gia' in memoria: 186 MB di picco per uno scatto
+    da 24 MP. Chiedendo al decoder JPEG di scalare mentre decodifica si scende
+    a 11 MB. Con quattro richieste in parallelo e' la differenza fra stare nel
+    limite del container e farsi uccidere dall'OOM killer."""
+
+    def _grande(self, tmp_path, name="grande.jpg", size=(4000, 3000)):
+        from PIL import Image
+        path = str(tmp_path / name)
+        Image.new("RGB", size, (90, 140, 200)).save(path, "JPEG", quality=70)
+        return path
+
+    def test_rotation_happens_after_the_resize(self, tmp_path, monkeypatch):
+        """thumbnail() chiede da se al decoder di scalare, ma se exif_transpose
+        viene prima l'immagine e' gia' in memoria a piena risoluzione e quella
+        richiesta non serve a nulla. Si verifica quindi l'ORDINE: la rotazione
+        deve ricevere un'immagine gia' piccola."""
+        from PIL import ImageOps
+        import services.image_processor as m
+        visto = []
+        vero = ImageOps.exif_transpose
+        def spia(img, **kw):
+            visto.append(img.size)
+            return vero(img, **kw)
+        monkeypatch.setattr(m.ImageOps, "exif_transpose", spia)
+
+        m.generate_thumbnail(self._grande(tmp_path, size=(4000, 3000)), size=400)
+
+        assert visto, "exif_transpose non chiamata"
+        assert max(visto[0]) <= 400, (
+            f"la rotazione riceve l'immagine a {visto[0]}: decodificata a piena "
+            f"risoluzione, ~186 MB invece di ~11")
+
+    def test_thumbnail_still_fits_the_box(self, tmp_path):
+        import io
+        from PIL import Image
+        from services.image_processor import generate_thumbnail
+        out = Image.open(io.BytesIO(generate_thumbnail(self._grande(tmp_path), size=400)))
+        assert max(out.size) <= 400
+
+    def test_orientation_is_still_applied(self, tmp_path):
+        """La rotazione ora avviene dopo il ridimensionamento: deve restare corretta."""
+        import io, piexif
+        from PIL import Image
+        from services.image_processor import generate_thumbnail
+        path = str(tmp_path / "ruotata.jpg")
+        exif = piexif.dump({"0th": {piexif.ImageIFD.Orientation: 6}})
+        Image.new("RGB", (800, 400), (10, 20, 30)).save(path, "JPEG", exif=exif)
+
+        out = Image.open(io.BytesIO(generate_thumbnail(path, size=200)))
+        # orientamento 6 = ruota di 90 gradi: da orizzontale a verticale
+        assert out.height > out.width, f"orientamento perso: {out.size}"
+
+    def test_prepare_for_ai_also_rotates_after_the_resize(self, tmp_path, monkeypatch):
+        from PIL import ImageOps
+        import services.image_processor as m
+        visto = []
+        vero = ImageOps.exif_transpose
+        def spia(img, **kw):
+            visto.append(img.size)
+            return vero(img, **kw)
+        monkeypatch.setattr(m.ImageOps, "exif_transpose", spia)
+
+        m.prepare_for_ai(self._grande(tmp_path, size=(4000, 3000)), max_side_px=1024)
+
+        assert visto, "exif_transpose non chiamata"
+        assert max(visto[0]) <= 1024, f"la rotazione riceve l'immagine a {visto[0]}"

@@ -84,11 +84,18 @@ def prepare_for_ai(
     quality = jpeg_quality or config.JPEG_QUALITY
     target_kb = target_max_kb or config.TARGET_MAX_KB
 
-    img = ImageOps.exif_transpose(open_any_format(image_path))
+    img = open_any_format(image_path)
 
-    # Ridimensiona solo se necessario (thumbnail non fa upscale)
+    # Ridimensiona solo se necessario (thumbnail non fa upscale).
+    # thumbnail() chiede da se al decoder JPEG di scalare mentre decodifica,
+    # ma solo se l'immagine non e' gia' stata caricata per intero: per questo
+    # la rotazione EXIF viene dopo. Con l'ordine inverso una foto da 24 MP
+    # costava 186 MB di picco invece di 11.
     if max(img.size) > side:
         img.thumbnail((side, side), Image.LANCZOS)
+
+    # Il riquadro e' quadrato, quindi ruotare dopo da' lo stesso risultato
+    img = ImageOps.exif_transpose(img)
 
     # Converti in RGB (richiesto per JPEG: no RGBA, no palette)
     if img.mode not in ("RGB", "L"):
@@ -120,10 +127,13 @@ def generate_thumbnail(
     thumb_size = size or config.THUMBNAIL_SIZE
     thumb_quality = quality or config.THUMBNAIL_QUALITY
 
-    img = ImageOps.exif_transpose(open_any_format(image_path))
+    img = open_any_format(image_path)
 
-    # thumbnail() di PIL non fa upscale
+    # thumbnail() di PIL non fa upscale, e chiede al decoder di scalare durante
+    # la decodifica: vale solo se l'immagine non e' gia' in memoria, quindi la
+    # rotazione EXIF va applicata dopo (vedi prepare_for_ai).
     img.thumbnail((thumb_size, thumb_size), Image.LANCZOS)
+    img = ImageOps.exif_transpose(img)
 
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
