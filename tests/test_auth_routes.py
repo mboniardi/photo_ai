@@ -121,3 +121,63 @@ class TestAuthCallback:
             resp = client.get("/auth/callback")
 
         assert resp.status_code == 403
+
+
+class TestCallbackUrlBehindProxy:
+    """Dietro cloudflared la richiesta arriva al container come
+    http://localhost:8081: l'URL dedotto dalla richiesta non coincide con
+    quello registrato su Google, e il login fallisce lato Google."""
+
+    class _FakeUrl:
+        path = "/auth/callback"
+        def __str__(self):
+            return "http://localhost:8081/auth/callback"
+
+    class _FakeRequest:
+        def url_for(self, name):
+            return TestCallbackUrlBehindProxy._FakeUrl()
+
+    def test_uses_public_base_url_when_configured(self, monkeypatch):
+        import config
+        from auth.google_oauth import callback_url
+        monkeypatch.setattr(config, "PUBLIC_BASE_URL", "https://photo.primafila.com")
+        assert callback_url(self._FakeRequest()) == "https://photo.primafila.com/auth/callback"
+
+    def test_tolerates_a_trailing_slash(self, monkeypatch):
+        import config
+        from auth.google_oauth import callback_url
+        monkeypatch.setattr(config, "PUBLIC_BASE_URL", "https://photo.primafila.com/")
+        assert callback_url(self._FakeRequest()) == "https://photo.primafila.com/auth/callback"
+
+    def test_falls_back_to_the_request_when_not_configured(self, monkeypatch):
+        import config
+        from auth.google_oauth import callback_url
+        monkeypatch.setattr(config, "PUBLIC_BASE_URL", "")
+        assert callback_url(self._FakeRequest()) == "http://localhost:8081/auth/callback"
+
+
+class TestSecureCookie:
+    def _set(self):
+        from fastapi.responses import Response
+        from auth.session import set_session_cookie
+        r = Response()
+        set_session_cookie(r, {"email": "a@b.c", "name": "A", "picture": ""})
+        return r.headers["set-cookie"]
+
+    def test_secure_flag_when_served_over_https(self, monkeypatch):
+        import config
+        monkeypatch.setattr(config, "PUBLIC_BASE_URL", "https://photo.primafila.com")
+        monkeypatch.setattr(config, "SECRET_KEY", "test-secret")
+        assert "secure" in self._set().lower()
+
+    def test_no_secure_flag_in_plain_http(self, monkeypatch):
+        import config
+        monkeypatch.setattr(config, "PUBLIC_BASE_URL", "")
+        monkeypatch.setattr(config, "SECRET_KEY", "test-secret")
+        assert "secure" not in self._set().lower()
+
+    def test_httponly_is_kept(self, monkeypatch):
+        import config
+        monkeypatch.setattr(config, "PUBLIC_BASE_URL", "https://photo.primafila.com")
+        monkeypatch.setattr(config, "SECRET_KEY", "test-secret")
+        assert "httponly" in self._set().lower()

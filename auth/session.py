@@ -53,4 +53,7 @@ def set_session_cookie(response, user_info: dict) -> None:
         max_age=_MAX_AGE_SECONDS,
         httponly=True,
         samesite="lax",
+        # Con TLS fino al browser il cookie non deve viaggiare in chiaro.
+        # In sviluppo su http resta disattivato, altrimenti il browser lo scarta.
+        secure=config.PUBLIC_BASE_URL.startswith("https"),
     )

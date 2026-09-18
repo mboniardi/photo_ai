@@ -40,10 +40,21 @@ body{background:#111;color:#eee;font-family:sans-serif;
 </div></body></html>"""
 
 
+def callback_url(request) -> str:
+    """
+    URL di callback da dichiarare a Google.
+    Deve combaciare carattere per carattere con quello registrato in console:
+    dietro un proxy la richiesta arriva su localhost, quindi quando
+    PUBLIC_BASE_URL e' configurata ha la precedenza sull'URL della richiesta.
+    """
+    if config.PUBLIC_BASE_URL:
+        return config.PUBLIC_BASE_URL.rstrip("/") + request.url_for("auth_callback").path
+    return str(request.url_for("auth_callback"))
+
+
 @router.get("/login")
 async def login(request: Request):
-    redirect_uri = str(request.url_for("auth_callback"))
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+    return await oauth.google.authorize_redirect(request, callback_url(request))
 
 
 @router.get("/callback", name="auth_callback")

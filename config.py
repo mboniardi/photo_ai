@@ -11,6 +11,12 @@ APP_VERSION = "0.1.0"
 # ── Rete ──────────────────────────────────────────────────────────
 APP_PORT: int = int(os.environ.get("APP_PORT", 8080))
 
+# URL pubblico da cui l'applicazione e' raggiunta dall'esterno. Dietro un proxy
+# (cloudflared) la richiesta arriva al container come http://localhost:8081:
+# l'URL dedotto dalla richiesta non coinciderebbe con quello registrato su
+# Google, e il login fallirebbe. Vuoto = usa l'URL della richiesta (sviluppo).
+PUBLIC_BASE_URL: str = os.environ.get("PUBLIC_BASE_URL", "")
+
 # ── Path dati ─────────────────────────────────────────────────────
 APP_DATA_PATH: str = os.environ.get("APP_DATA_PATH", "/mnt/nas/photo_ai_data")
 
