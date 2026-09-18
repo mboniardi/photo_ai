@@ -273,3 +273,47 @@ class TestGpsConversion:
         from services.exif_reader import dms_to_decimal
         result = dms_to_decimal([(118, 1), (15, 1), (0, 1)], "W")
         assert result == pytest.approx(-118.25, abs=0.01)
+
+
+class TestBoundedRead:
+    """L'EXIF di un JPEG vive in un segmento APP1 subito dopo l'intestazione.
+    Leggere l'intero file per trovarlo costa, su rete lenta, quanto l'intero file —
+    e sulle scansioni senza EXIF quel costo e' interamente sprecato."""
+
+    def test_reads_only_the_head_of_the_file(self, tmp_path, monkeypatch):
+        import services.exif_reader as m
+        jpeg = make_jpeg_with_exif(exif_dict=make_full_exif())
+        # coda voluminosa: se venisse letta, l'argomento passato a piexif sarebbe enorme
+        path = save_jpeg(tmp_path, jpeg + b"\x00" * (2 * 1024 * 1024), "grande.jpg")
+
+        visti = {}
+        import piexif
+        vero_load = piexif.load
+
+        def load_spia(arg):
+            visti["tipo"] = type(arg).__name__
+            visti["dimensione"] = len(arg) if isinstance(arg, (bytes, bytearray)) else None
+            return vero_load(arg)
+
+        monkeypatch.setattr(piexif, "load", load_spia)
+        meta = m.read_exif(path)
+
+        assert visti["tipo"] in ("bytes", "bytearray"), "piexif riceve ancora un percorso"
+        assert visti["dimensione"] <= m._EXIF_HEAD_BYTES
+        assert visti["dimensione"] < 2 * 1024 * 1024
+        assert meta["camera_make"] == "Canon"
+
+    def test_survives_a_head_too_small_for_exif(self, tmp_path, monkeypatch):
+        import services.exif_reader as m
+        monkeypatch.setattr(m, "_EXIF_HEAD_BYTES", 8)
+        path = save_jpeg(tmp_path, make_jpeg_with_exif(exif_dict=make_full_exif()))
+        meta = m.read_exif(path)
+        # niente eccezioni: le dimensioni arrivano comunque da PIL
+        assert meta["width"] == 100 and meta["height"] == 80
+
+    def test_file_without_exif_still_yields_dimensions(self, tmp_path):
+        import services.exif_reader as m
+        path = save_jpeg(tmp_path, make_jpeg_with_exif(), "senza_exif.jpg")
+        meta = m.read_exif(path)
+        assert meta["width"] == 100 and meta["height"] == 80
+        assert meta["camera_make"] is None

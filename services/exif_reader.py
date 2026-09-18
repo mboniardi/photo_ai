@@ -21,6 +21,12 @@ _PNG_EXTS = {".png"}
 _HEIC_EXTS = {".heic", ".heif"}
 _RAW_EXTS = {".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf", ".rw2"}
 
+# In un JPEG l'EXIF sta nel segmento APP1, subito dopo l'intestazione: e' una
+# proprieta' del formato, non una convenzione. Leggere solo questa porzione
+# evita di scaricare l'intero file dalla rete — su una libreria di scansioni,
+# che l'EXIF non ce l'hanno proprio, e' l'intero costo della scansione.
+_EXIF_HEAD_BYTES = 128 * 1024
+
 
 # ── API pubblica ──────────────────────────────────────────────────
 
@@ -78,9 +84,11 @@ def _read_jpeg(path: str) -> dict:
 
     try:
         import piexif
-        exif_data = piexif.load(path)
+        with open(path, "rb") as fh:
+            head = fh.read(_EXIF_HEAD_BYTES)
+        exif_data = piexif.load(head)
     except Exception:
-        return meta  # JPEG senza EXIF
+        return meta  # JPEG senza EXIF, o EXIF illeggibile nella porzione letta
 
     ifd0 = exif_data.get("0th", {})
 
