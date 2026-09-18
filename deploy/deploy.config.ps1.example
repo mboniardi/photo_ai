@@ -38,6 +38,14 @@ $DEEPSEEK_API_KEY     = ""              # opzionale — chiave per il motore di 
 $AUTHORIZED_EMAILS    = @("your@gmail.com")
 $EXCLUDED_EXTS        = ".cr3"              # estensioni da escludere dalla scansione (es. ".cr3,.nef")
 
+# ── Embedding e ricerca semantica ───────────────────────────────
+# Questi valori finiscono nel .env della VM a ogni deploy: tarali qui,
+# non sulla VM, altrimenti il prossimo deploy li riporta al default.
+$OLLAMA_BASE_URL         = "http://172.24.24.91:11434"   # Ollama sull'host Hyper-V
+$OLLAMA_EMBED_MODEL      = "bge-m3"                      # 1024 dimensioni
+$SEARCH_SIMILARITY_FLOOR = "0.40"   # soglia assoluta: sotto, il risultato e' scartato
+$SEARCH_RELATIVE_CUTOFF  = "0.90"   # tiene i risultati >= 90% del migliore della query
+
 # ── VM console password (for SSH/console access during testing) ──
 $CONSOLE_PASSWD       = "CHANGE_ME"
 

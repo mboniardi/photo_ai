@@ -206,7 +206,9 @@ Questo branch sposta l'embedding da Gemini a bge-m3, servito localmente da Ollam
 2. Esegui `docker compose up -d --build` come sempre.
 3. Vai su Settings → **"Re-indicizza embedding"** e avvia la re-indicizzazione.
 4. **Fino al termine della re-indicizzazione la ricerca semantica non restituisce risultati**: i vettori salvati sono ancora quelli del modello precedente, hanno una dimensione diversa da quelli di bge-m3 e vengono scartati dal controllo di compatibilità in fase di ricerca. Non è un errore: è la migrazione che deve completarsi.
-5. Le due soglie di ricerca (`SEARCH_SIMILARITY_FLOOR`, `SEARCH_RELATIVE_CUTOFF`) possono essere modificate in `.env` in un secondo momento, senza ricostruire l'immagine — basta `docker compose up -d` (senza `--build`) dopo la modifica.
+5. **Taratura delle soglie.** Le due soglie di ricerca (`SEARCH_SIMILARITY_FLOOR`, `SEARCH_RELATIVE_CUTOFF`) vanno calibrate sulla libreria reale dopo la re-indicizzazione: se mancano foto pertinenti abbassa `SEARCH_RELATIVE_CUTOFF` (0.90 → 0.85), se compaiono risultati estranei alzala (0.90 → 0.93).
+
+   Per una prova rapida puoi modificarle nel `.env` della VM e fare `docker compose up -d` (senza `--build`). **Il valore definitivo va però scritto in `deploy.config.ps1` sull'host Windows**: il `.env` della VM viene rigenerato da zero a ogni `deploy.ps1`, quindi una soglia tarata solo sulla VM torna silenziosamente al default al primo deploy successivo.
 
 ---
 
