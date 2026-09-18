@@ -1,5 +1,6 @@
 """Route /api/photos."""
 import os
+import threading
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -10,6 +11,11 @@ from services.image_processor import generate_thumbnail
 import config
 
 router = APIRouter(prefix="/api/photos", tags=["photos"])
+
+# Tetto alle decodifiche simultanee: protegge la memoria del container quando
+# la griglia chiede molte miniature insieme. Le richieste in eccesso aspettano
+# il loro turno invece di allocare tutte insieme.
+_thumbnail_slots = threading.Semaphore(config.THUMBNAIL_MAX_CONCURRENT)
 
 
 class PhotoUpdateRequest(BaseModel):
@@ -99,7 +105,8 @@ def get_thumbnail(photo_id: int, size: int = 400):
         raise HTTPException(status_code=404, detail="Foto non trovata")
     if not os.path.exists(photo["file_path"]):
         raise HTTPException(status_code=404, detail="File non trovato sul disco")
-    jpeg_bytes = generate_thumbnail(photo["file_path"], size=size)
+    with _thumbnail_slots:
+        jpeg_bytes = generate_thumbnail(photo["file_path"], size=size)
     return Response(
         content=jpeg_bytes,
         media_type="image/jpeg",

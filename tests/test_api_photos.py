@@ -146,3 +146,51 @@ class TestUpdatePhotoLocation:
         assert resp.status_code == 200
         data = c.get(f"/api/photos/{pid}").json()
         assert data["location_source"] is None
+
+
+class TestThumbnailConcurrencyLimit:
+    """Una griglia da 100 foto chiede 100 miniature insieme. Ogni decodifica di
+    uno scan da 6608x4128 occupa ~82 MB: senza un tetto, il pool di thread di
+    uvicorn ne avvia decine e il container viene ucciso dall'OOM killer —
+    successo davvero in produzione il 18 settembre 2026."""
+
+    def test_a_limit_exists_and_is_bounded(self):
+        from api.photos import _thumbnail_slots
+        import config
+        assert _thumbnail_slots._value == config.THUMBNAIL_MAX_CONCURRENT
+        assert 1 <= config.THUMBNAIL_MAX_CONCURRENT <= 16
+
+    def test_only_n_decodings_run_at_once(self, client_with_photo, monkeypatch):
+        import threading, time
+        import api.photos as m
+
+        c, pid, _ = client_with_photo
+        monkeypatch.setattr(m, "_thumbnail_slots", threading.Semaphore(2))
+
+        insieme, picco, lock = 0, 0, threading.Lock()
+
+        def lenta(path, size=400):
+            nonlocal insieme, picco
+            with lock:
+                insieme += 1
+                picco = max(picco, insieme)
+            time.sleep(0.15)
+            with lock:
+                insieme -= 1
+            return b"\xff\xd8\xff\xd9"
+
+        monkeypatch.setattr(m, "generate_thumbnail", lenta)
+
+        errori = []
+        def chiedi():
+            try:
+                assert c.get(f"/api/photos/{pid}/thumbnail").status_code == 200
+            except Exception as e:
+                errori.append(e)
+
+        ts = [threading.Thread(target=chiedi) for _ in range(8)]
+        for x in ts: x.start()
+        for x in ts: x.join(timeout=30)
+
+        assert not errori, errori
+        assert picco <= 2, f"decodifiche simultanee: {picco}, atteso al massimo 2"

@@ -105,6 +105,14 @@ THUMBNAIL_SIZE: int = int(os.environ.get("THUMBNAIL_SIZE", 400))
 # Qualità JPEG della thumbnail UI
 THUMBNAIL_QUALITY: int = int(os.environ.get("THUMBNAIL_QUALITY", 82))
 
+# Quante miniature si generano contemporaneamente. Ogni decodifica tiene in
+# memoria l'immagine a piena risoluzione — circa 82 MB per uno scan da 24 MP —
+# e una griglia da 100 foto le chiede tutte insieme. Senza questo tetto il pool
+# di thread di uvicorn ne avvia decine e il container viene ucciso dall'OOM
+# killer. Il picco di memoria e' all'incirca questo numero per la foto piu'
+# grande della libreria.
+THUMBNAIL_MAX_CONCURRENT: int = int(os.environ.get("THUMBNAIL_MAX_CONCURRENT", 4))
+
 # ── Rate limit AI (§6.5) ──────────────────────────────────────────
 # Request al minuto verso Gemini gratuito (margine di sicurezza su 15 RPM)
 ANALYSIS_RPM_LIMIT: int = int(os.environ.get("ANALYSIS_RPM_LIMIT", 12))
