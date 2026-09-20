@@ -1693,12 +1693,19 @@ createApp({
 
     function toggleSelectMode() {
       selectMode.value = !selectMode.value;
-      if (!selectMode.value) selectedIds.value = new Set();
+      if (!selectMode.value) clearSelection();
     }
 
-    function clearSelection() { selectedIds.value = new Set(); }
-
     let _ultimaSelezionata = null;
+
+    function clearSelection() {
+      // Azzera tutto cio' che descrive la selezione, non solo gli id: dopo
+      // un'assegnazione le foto spariscono dalla griglia (il filtro le
+      // esclude) ma restavano selezionate, e finivano nel gruppo successivo.
+      selectedIds.value = new Set();
+      idsConPosizione.value = new Set();
+      _ultimaSelezionata = null;
+    }
 
     function onPhotoClick(photo, ev) {
       if (!selectMode.value) { openLightbox(photo); return; }
@@ -1970,6 +1977,7 @@ createApp({
       if (r.mancanti?.length) parti.push(`${r.mancanti.length} non trovate`);
       showToast(parti.join(' · '), 'success');
       closeLocationEditor();
+      clearSelection();
       loadPhotos(true);
     }
 
