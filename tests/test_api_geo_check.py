@@ -66,3 +66,56 @@ class TestGeoCheckList:
         c, _, _ = client_geo
         anon = TestClient(c.app)
         assert anon.get("/api/geo-check").status_code == 401
+
+
+class TestGeoCheckAccept:
+    def _accetta(self, c, ids):
+        return c.post("/api/geo-check/accept", json={
+            "photo_ids": [ids["sospetta"]],
+            "latitude": 25.70, "longitude": 32.64,
+            "location_name": "Luxor",
+        })
+
+    def test_scrive_la_posizione_proposta(self, client_geo):
+        c, ids, db = client_geo
+        assert self._accetta(c, ids).status_code == 200
+        from database.photos import get_photo_by_id
+        p = get_photo_by_id(db, ids["sospetta"])
+        assert p["latitude"] == pytest.approx(25.70)
+        assert p["location_name"] == "Luxor"
+        assert p["location_source"] == "corrected"
+
+    def test_cancella_descrizione_embedding_e_data_di_analisi(self, client_geo):
+        c, ids, db = client_geo
+        self._accetta(c, ids)
+        from database.photos import get_photo_by_id
+        p = get_photo_by_id(db, ids["sospetta"])
+        assert p["description"] is None
+        assert p["embedding"] is None
+        assert p["analyzed_at"] is None
+
+    def test_rimette_la_foto_in_coda(self, client_geo):
+        c, ids, db = client_geo
+        r = self._accetta(c, ids)
+        assert r.json()["in_coda"] == 1
+        from database.queue import get_queue_counts
+        assert get_queue_counts(db).get("pending", 0) == 1
+
+    def test_il_caso_sparisce_dall_elenco(self, client_geo):
+        c, ids, _ = client_geo
+        self._accetta(c, ids)
+        assert c.get("/api/geo-check").json()["casi"] == []
+
+    def test_rifiuta_coordinate_impossibili(self, client_geo):
+        c, ids, _ = client_geo
+        r = c.post("/api/geo-check/accept", json={
+            "photo_ids": [ids["sospetta"]],
+            "latitude": 120.0, "longitude": 32.64, "location_name": "x"})
+        assert r.status_code == 422
+
+    def test_rifiuta_una_lista_vuota(self, client_geo):
+        c, _, _ = client_geo
+        r = c.post("/api/geo-check/accept", json={
+            "photo_ids": [], "latitude": 25.0, "longitude": 32.0,
+            "location_name": "x"})
+        assert r.status_code == 422

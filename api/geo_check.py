@@ -1,9 +1,12 @@
 """Route /api/geo-check — foto collocate in un posto incoerente con le vicine."""
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import config
-from database.photos import get_photos_for_geo_check
+from database.photos import clear_analysis, get_photos_for_geo_check, update_photo
+from database.queue import add_to_queue
 from services.geo_anomaly import prepara, rileva, raggruppa
 
 router = APIRouter(prefix="/api/geo-check", tags=["geo-check"])
@@ -53,3 +56,38 @@ def elenca_casi():
     casi.sort(key=lambda c: -c["distanza_km"])
 
     return {"esaminate": len(foto), "segnalate": len(anomalie), "casi": casi}
+
+
+class AcceptRequest(BaseModel):
+    photo_ids: list[int] = Field(min_length=1)
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    location_name: Optional[str] = None
+
+
+@router.post("/accept")
+def accetta_proposta(req: AcceptRequest):
+    """
+    Applica la posizione proposta e rimanda le foto in analisi.
+
+    La descrizione se ne va con l'analisi: era scritta a partire dal posto
+    sbagliato. La nuova analisi riceve la posizione corretta come contesto,
+    perché il worker costruisce il proprio suggerimento dai campi che qui
+    vengono scritti.
+    """
+    aggiornate = in_coda = 0
+    for pid in req.photo_ids:
+        clear_analysis(config.LOCAL_DB, pid)
+        update_photo(
+            config.LOCAL_DB, pid,
+            latitude=req.latitude,
+            longitude=req.longitude,
+            location_name=req.location_name,
+            location_source="corrected",
+        )
+        aggiornate += 1
+        # priorità alta: è una correzione chiesta a mano, non un arretrato
+        add_to_queue(config.LOCAL_DB, photo_id=pid, priority=1)
+        in_coda += 1
+
+    return {"ok": True, "aggiornate": aggiornate, "in_coda": in_coda}
