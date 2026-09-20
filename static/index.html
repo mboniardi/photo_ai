@@ -716,7 +716,7 @@
             {{ selectMode ? '✓ Selecting' : 'Select' }}
           </button>
           <button v-if="selectMode" class="toolbar-btn" @click="selectAll">
-            Select all ({{ photos.length }})
+            Seleziona tutte
           </button>
         </div>
       </div>
@@ -801,6 +801,7 @@
           <button class="bulk-btn" @click="downloadZip">⬇ Download ZIP</button>
           <button class="bulk-btn" @click="bulkFavorite">⭐ Favorite</button>
           <button class="bulk-btn danger" @click="bulkTrash">🗑 Trash</button>
+          <button class="bulk-btn" @click="openBulkLocation">📍 Posizione</button>
           <button class="bulk-btn" @click="bulkAddToQueue">⚡ Analyze</button>
           <button class="bulk-btn" style="margin-left:auto" @click="clearSelection">Clear</button>
         </div>
@@ -896,7 +897,7 @@
             :key="photo.id"
             class="photo-card"
             :class="{ selected: selectedIds.has(photo.id), 'is-trash': photo.is_trash }"
-            @click="onPhotoClick(photo)"
+            @click="onPhotoClick(photo, $event)"
           >
             <!-- Selection check -->
             <div v-if="selectMode" class="photo-select-check">
@@ -1336,7 +1337,9 @@
     <div v-if="locationEditor && locationEditor.open" class="modal-overlay">
       <div class="modal" style="max-width:600px">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px">
-          <div class="modal-title" style="margin-bottom:0">Modifica posizione</div>
+          <div class="modal-title" style="margin-bottom:0">
+            {{ locationEditor.bulkIds ? `Posizione per ${locationEditor.bulkIds.length} foto` : 'Modifica posizione' }}
+          </div>
           <button @click="closeLocationEditor" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0 4px">✕</button>
         </div>
 
@@ -1370,13 +1373,29 @@
           <span v-else>—</span>
         </div>
 
+        <div v-if="locationEditor.conferma" style="border:1px solid var(--amber);border-radius:8px;padding:12px;margin-bottom:12px">
+          <div style="font-size:13px;margin-bottom:10px">
+            <strong>{{ locationEditor.bulkIds.length }} foto selezionate.</strong>
+            {{ locationEditor.conferma }} hanno già una posizione — per molte è il GPS della fotocamera.
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn-primary" @click="applicaBulkLocation(false)">
+              Assegna solo alle {{ locationEditor.bulkIds.length - locationEditor.conferma }} senza posizione
+            </button>
+            <button class="btn-secondary" @click="applicaBulkLocation(true)">
+              Sovrascrivi tutte e {{ locationEditor.bulkIds.length }}
+            </button>
+          </div>
+        </div>
+
         <div class="modal-footer">
           <button class="btn-secondary" @click="closeLocationEditor">Annulla</button>
           <button
+            v-if="!locationEditor.conferma"
             class="btn-primary"
             @click="saveLocation"
             :disabled="locationEditor.saving || locationEditor.pendingLat == null"
-          >{{ locationEditor.saving ? 'Salvataggio…' : 'Salva posizione' }}</button>
+          >{{ locationEditor.saving ? 'Salvataggio…' : (locationEditor.bulkIds ? `Assegna a ${locationEditor.bulkIds.length} foto` : 'Salva posizione') }}</button>
         </div>
       </div>
     </div>
@@ -1430,6 +1449,8 @@ createApp({
       searchQuery: '',
       searchError: '',
       saving: false,
+      bulkIds: null,     // non nullo quando si assegna a un gruppo
+      conferma: 0,       // quante del gruppo hanno gia' una posizione
     });
     let _locMap = null;
     let _locMarker = null;
@@ -1508,8 +1529,26 @@ createApp({
 
     function loadMore() { loadPhotos(false); }
 
-    function selectAll() {
-      selectedIds.value = new Set(photos.value.map(p => p.id));
+    // Gli id gia' posizionati, per sapere quante foto si sovrascriverebbero.
+    const idsConPosizione = ref(new Set());
+
+    async function selectAll() {
+      // Non basta prendere photos.value: la griglia ne carica cento per volta.
+      const p = buildParams(0);
+      p.delete('limit'); p.delete('offset'); p.delete('sort_by'); p.delete('sort_desc');
+      const d = await apiGet(`/api/photos/ids?${p}`);
+      if (!d) { showToast('Impossibile leggere la selezione', 'error'); return; }
+      selectedIds.value = new Set(d.ids);
+      idsConPosizione.value = new Set(d.con_posizione);
+    }
+
+    // Quante fra quelle selezionate hanno gia' una posizione. Unisce cio' che
+    // il server ha detto con cio' che la griglia ha gia' in mano, cosi' il
+    // numero resta esatto anche dopo una deselezione a mano.
+    function _selezionateGiaPosizionate() {
+      const conPos = new Set(idsConPosizione.value);
+      photos.value.forEach(ph => { if (ph.latitude != null) conPos.add(ph.id); });
+      return [...selectedIds.value].filter(id => conPos.has(id)).length;
     }
 
     function selectFolder(path) {
@@ -1637,14 +1676,27 @@ createApp({
 
     function clearSelection() { selectedIds.value = new Set(); }
 
-    function onPhotoClick(photo) {
-      if (selectMode.value) {
-        const s = new Set(selectedIds.value);
-        s.has(photo.id) ? s.delete(photo.id) : s.add(photo.id);
-        selectedIds.value = s;
-      } else {
-        openLightbox(photo);
+    let _ultimaSelezionata = null;
+
+    function onPhotoClick(photo, ev) {
+      if (!selectMode.value) { openLightbox(photo); return; }
+      const s = new Set(selectedIds.value);
+
+      // Shift-click: seleziona tutto l'intervallo fra l'ultima foto toccata e
+      // questa. E' il modo di prenderne trecento senza trecento clic.
+      if (ev && ev.shiftKey && _ultimaSelezionata !== null) {
+        const da = photos.value.findIndex(p => p.id === _ultimaSelezionata);
+        const a  = photos.value.findIndex(p => p.id === photo.id);
+        if (da !== -1 && a !== -1) {
+          for (let i = Math.min(da, a); i <= Math.max(da, a); i++) s.add(photos.value[i].id);
+          selectedIds.value = s;
+          return;
+        }
       }
+
+      s.has(photo.id) ? s.delete(photo.id) : s.add(photo.id);
+      _ultimaSelezionata = photo.id;
+      selectedIds.value = s;
     }
 
     /* BULK ACTIONS */
@@ -1766,6 +1818,8 @@ createApp({
 
     function openLocationEditor() {
       if (!lightbox.photo) return;
+      locationEditor.bulkIds   = null;
+      locationEditor.conferma  = 0;
       locationEditor.photoId   = lightbox.photo.id;
       locationEditor.pendingLat = lightbox.photo.latitude  ?? null;
       locationEditor.pendingLon = lightbox.photo.longitude ?? null;
@@ -1780,6 +1834,8 @@ createApp({
     function closeLocationEditor() {
       clearTimeout(_searchDebounceTimer);
       locationEditor.open = false;
+      locationEditor.bulkIds = null;
+      locationEditor.conferma = 0;
       if (_locMap) { _locMap.remove(); _locMap = null; _locMarker = null; }
     }
 
@@ -1859,7 +1915,47 @@ createApp({
       } catch { locationEditor.searchError = 'Luogo non trovato'; }
     }
 
+    function openBulkLocation() {
+      const ids = [...selectedIds.value];
+      if (!ids.length) return;
+      Object.assign(locationEditor, {
+        bulkIds: ids, conferma: 0, photoId: null,
+        pendingLat: null, pendingLon: null, pendingName: '',
+        searchQuery: '', searchError: '', saving: false, open: true,
+      });
+      nextTick(() => { _initLeafletMap(); });
+    }
+
+    async function applicaBulkLocation(overwrite) {
+      locationEditor.saving = true;
+      const r = await apiPut('/api/photos/bulk-location', {
+        photo_ids: locationEditor.bulkIds,
+        latitude: locationEditor.pendingLat,
+        longitude: locationEditor.pendingLon,
+        location_name: locationEditor.pendingName || null,
+        overwrite,
+      });
+      locationEditor.saving = false;
+      if (!r?.ok) { showToast('Errore nell\'assegnazione della posizione', 'error'); return; }
+
+      const parti = [`${r.aggiornate} foto posizionate`];
+      if (r.saltate)  parti.push(`${r.saltate} lasciate com'erano`);
+      if (r.mancanti?.length) parti.push(`${r.mancanti.length} non trovate`);
+      showToast(parti.join(' · '), 'success');
+      closeLocationEditor();
+      loadPhotos(true);
+    }
+
     async function saveLocation() {
+      // Modalita' gruppo: prima di scrivere, dire quante foto hanno gia' una
+      // posizione. Sovrascrivere un GPS vero con un punto scelto per un gruppo
+      // e' una perdita di informazione, e va fatta di proposito.
+      if (locationEditor.bulkIds) {
+        if (locationEditor.pendingLat == null) return;
+        const gia = _selezionateGiaPosizionate();
+        if (gia > 0) { locationEditor.conferma = gia; return; }
+        return applicaBulkLocation(false);
+      }
       if (!locationEditor.photoId || locationEditor.pendingLat == null) return;
       locationEditor.saving = true;
       const result = await apiPut(`/api/photos/${locationEditor.photoId}`, {
@@ -2386,6 +2482,7 @@ createApp({
       searchQuery, isSearchMode, lastSearchQuery, doSearch, clearSearch,
       showFilters, filters, activeFilterCount, filterBadges, clearFilter, clearAllFilters,
       selectMode, selectedIds, toggleSelectMode, selectAll, clearSelection, onPhotoClick,
+      openBulkLocation, applicaBulkLocation,
       downloadZip, bulkFavorite, bulkTrash, bulkAddToQueue,
       queueOpen, queue, lib, fmtNum, queueProgress, pauseQueue, resumeQueue, retryErrors, clearQueue,
       lightbox, lightboxIndex, openLightbox, closeLightbox, lightboxPrev, lightboxNext,

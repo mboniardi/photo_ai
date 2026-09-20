@@ -86,28 +86,26 @@ def get_map_photos():
 @router.get("/ids")
 def photo_ids_for_selection(
     folder_path: Optional[str] = None,
+    min_score: Optional[float] = None,
     is_favorite: Optional[bool] = None,
     is_trash: Optional[bool] = None,
-    analyzed_only: Optional[bool] = None,
-    min_score: Optional[float] = None,
+    analyzed: Optional[bool] = None,
     format: Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    location: Optional[str] = None,
-    orientation: Optional[str] = None,
 ):
     """
     Gli id di tutto cio' che corrisponde ai filtri, per "seleziona tutte".
 
     La griglia ne carica cento per volta: senza questa rotta, per selezionarne
     settecento bisognerebbe scorrere sette volte.
+
+    I parametri sono gli stessi di GET /api/photos, nome per nome: se i due
+    elenchi divergessero, "seleziona tutte" prenderebbe foto diverse da quelle
+    che hai davanti.
     """
     return get_photo_ids_for_selection(
         config.LOCAL_DB,
-        folder_path=folder_path, is_favorite=is_favorite, is_trash=is_trash,
-        analyzed_only=analyzed_only, min_score=min_score, format=format,
-        date_from=date_from, date_to=date_to, location=location,
-        orientation=orientation,
+        folder_path=folder_path, min_score=min_score, is_favorite=is_favorite,
+        is_trash=is_trash, analyzed_only=analyzed, format=format,
     )
 
 
