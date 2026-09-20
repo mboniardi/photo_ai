@@ -235,3 +235,47 @@ class TestLibraryStatusCounts:
         self._foto(tmp_db, analizzata=True, emb=[])
         s = count_library_status(tmp_db, embedding_dim=4)
         assert s["to_embed"] == 1 and s["complete"] == 0
+
+
+class TestGeoCheckQueries:
+    def test_legge_solo_le_foto_georeferenziate_in_ordine(self, tmp_db):
+        from database.photos import insert_photo, update_photo, get_photos_for_geo_check
+        a = insert_photo(tmp_db, file_path="/x/a.jpg", folder_path="/x",
+                         filename="a.jpg", format="jpg", file_size=1, width=4, height=3)
+        b = insert_photo(tmp_db, file_path="/x/b.jpg", folder_path="/x",
+                         filename="b.jpg", format="jpg", file_size=1, width=4, height=3)
+        c = insert_photo(tmp_db, file_path="/x/c.jpg", folder_path="/x",
+                         filename="c.jpg", format="jpg", file_size=1, width=4, height=3)
+        update_photo(tmp_db, a, latitude=25.0, longitude=32.0, exif_date="2026-04-01T12:00:00")
+        update_photo(tmp_db, b, latitude=26.0, longitude=32.0, exif_date="2026-04-01T09:00:00")
+        update_photo(tmp_db, c, exif_date="2026-04-01T10:00:00")   # senza coordinate
+        righe = get_photos_for_geo_check(tmp_db)
+        assert [r["id"] for r in righe] == [b, a]
+
+    def test_esclude_il_cestino(self, tmp_db):
+        from database.photos import insert_photo, update_photo, get_photos_for_geo_check
+        pid = insert_photo(tmp_db, file_path="/x/t.jpg", folder_path="/x",
+                           filename="t.jpg", format="jpg", file_size=1, width=4, height=3)
+        update_photo(tmp_db, pid, latitude=25.0, longitude=32.0,
+                     exif_date="2026-04-01T12:00:00", is_trash=1)
+        assert get_photos_for_geo_check(tmp_db) == []
+
+    def test_clear_analysis_azzera_l_analisi_e_non_la_posizione(self, tmp_db):
+        from database.photos import insert_photo, update_photo, get_photo_by_id, clear_analysis
+        pid = insert_photo(tmp_db, file_path="/x/d.jpg", folder_path="/x",
+                           filename="d.jpg", format="jpg", file_size=1, width=4, height=3)
+        update_photo(tmp_db, pid, description="sbagliata", subject="s", atmosphere="a",
+                     strengths="f", weaknesses="d", technical_score=7.0,
+                     aesthetic_score=8.0, overall_score=7.5, colors='["rosso"]',
+                     embedding="[0.1, 0.2]", analyzed_at="2026-01-01T00:00:00",
+                     latitude=25.0, longitude=32.0, location_name="Luxor",
+                     is_favorite=1, user_description="mia nota")
+        clear_analysis(tmp_db, pid)
+        p = get_photo_by_id(tmp_db, pid)
+        assert p["description"] is None
+        assert p["embedding"] is None
+        assert p["analyzed_at"] is None
+        assert p["subject"] is None and p["overall_score"] is None
+        # la posizione e i dati dell'utente restano
+        assert p["latitude"] == 25.0 and p["location_name"] == "Luxor"
+        assert p["is_favorite"] == 1 and p["user_description"] == "mia nota"
