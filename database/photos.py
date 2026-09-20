@@ -408,3 +408,29 @@ def bulk_set_location(db_path: Optional[str] = None,
         "saltate": len(esistenti) - len(da_scrivere),
         "mancanti": mancanti,
     }
+
+
+def mark_location_confirmed(db_path: Optional[str] = None,
+                            *, photo_ids: list) -> int:
+    """
+    Dichiara buona la posizione che la foto ha gia': la marca 'manual' e
+    nient'altro. Ritorna quante ne sono state marcate.
+
+    Serve al caso opposto della correzione: la posizione attuale e' giusta ed
+    e' la proposta a sbagliare. Descrizione, embedding e analisi non si toccano
+    — non c'e' niente da rifare, quindi non si spende nulla.
+
+    'manual' e' fra le origini affidabili, quindi il rilevatore smette di
+    discutere questa foto e la usa come ancora per giudicare le vicine.
+    """
+    if not photo_ids:
+        return 0
+    segnaposto = ",".join("?" * len(photo_ids))
+    with get_db(db_path) as conn:
+        cur = conn.execute(
+            f"""UPDATE photos
+                SET location_source = 'manual', updated_at = datetime('now')
+                WHERE id IN ({segnaposto}) AND latitude IS NOT NULL""",
+            list(photo_ids),
+        )
+        return cur.rowcount

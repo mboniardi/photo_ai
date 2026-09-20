@@ -5,7 +5,10 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 import config
-from database.photos import clear_analysis, get_photo_by_id, get_photos_for_geo_check, update_photo
+from database.photos import (
+    clear_analysis, get_photo_by_id, get_photos_for_geo_check, update_photo,
+    mark_location_confirmed,
+)
 from database.queue import add_to_queue
 from services.geo_anomaly import prepara, rileva, raggruppa
 
@@ -102,3 +105,22 @@ def accetta_proposta(req: AcceptRequest):
         in_coda += 1
 
     return {"ok": True, "aggiornate": aggiornate, "in_coda": in_coda, "mancanti": mancanti}
+
+
+class ConfirmRequest(BaseModel):
+    photo_ids: list[int] = Field(min_length=1)
+
+
+@router.post("/confirm")
+def conferma_posizione(req: ConfirmRequest):
+    """
+    La posizione attuale e' gia' giusta: e' la proposta a sbagliare.
+
+    Si limita a marcarla 'manual'. Niente azzeramento della descrizione,
+    niente rianalisi: non c'e' nulla da rifare e non si spende nulla. Il caso
+    sparisce dall'elenco perche' 'manual' e' fra le origini affidabili, che il
+    rilevatore non discute.
+    """
+    return {"ok": True,
+            "confermate": mark_location_confirmed(config.LOCAL_DB,
+                                                  photo_ids=req.photo_ids)}

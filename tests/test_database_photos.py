@@ -437,3 +437,46 @@ class TestPhotoIdsForSelection:
         from database.photos import get_photo_ids_for_selection
         viva = self._foto(tmp_db, "/a"); self._foto(tmp_db, "/a", trash=1)
         assert get_photo_ids_for_selection(tmp_db, folder_path="/a", is_trash=False)["ids"] == [viva]
+
+
+class TestMarkLocationConfirmed:
+    """Quando la posizione attuale e' gia' giusta ed e' la proposta a sbagliare:
+    si marca 'manual' e basta. Niente rianalisi, quindi nessun costo."""
+
+    def _foto(self, db, *, lat=None, src=None, descr=None):
+        import uuid
+        from database.photos import insert_photo, update_photo
+        pid = insert_photo(db, file_path=f"/x/{uuid.uuid4()}.jpg", folder_path="/x",
+                           filename="a.jpg", format="jpg", file_size=1, width=4, height=3)
+        campi = {}
+        if lat is not None: campi.update(latitude=lat, longitude=2.0, location_source=src)
+        if descr: campi.update(description=descr, analyzed_at="2026-01-01T00:00:00",
+                               embedding="[0.1]")
+        if campi: update_photo(db, pid, **campi)
+        return pid
+
+    def test_marca_manual_senza_toccare_le_coordinate(self, tmp_db):
+        from database.photos import mark_location_confirmed, get_photo_by_id
+        pid = self._foto(tmp_db, lat=30.0, src="ai")
+        assert mark_location_confirmed(tmp_db, photo_ids=[pid]) == 1
+        p = get_photo_by_id(tmp_db, pid)
+        assert p["location_source"] == "manual"
+        assert p["latitude"] == 30.0 and p["longitude"] == 2.0
+
+    def test_non_tocca_analisi_ne_embedding(self, tmp_db):
+        from database.photos import mark_location_confirmed, get_photo_by_id
+        pid = self._foto(tmp_db, lat=30.0, src="ai", descr="descrizione buona")
+        mark_location_confirmed(tmp_db, photo_ids=[pid])
+        p = get_photo_by_id(tmp_db, pid)
+        assert p["description"] == "descrizione buona"
+        assert p["analyzed_at"] is not None and p["embedding"] == "[0.1]"
+
+    def test_salta_chi_non_ha_coordinate(self, tmp_db):
+        from database.photos import mark_location_confirmed, get_photo_by_id
+        senza = self._foto(tmp_db)
+        assert mark_location_confirmed(tmp_db, photo_ids=[senza]) == 0
+        assert get_photo_by_id(tmp_db, senza)["location_source"] is None
+
+    def test_lista_vuota(self, tmp_db):
+        from database.photos import mark_location_confirmed
+        assert mark_location_confirmed(tmp_db, photo_ids=[]) == 0

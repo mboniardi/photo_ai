@@ -201,3 +201,34 @@ class TestGeoCheckOrdinamento:
         assert d["casi"][0]["photo_ids"] == [lontano_id]
         assert d["casi"][1]["photo_ids"] == [vicino_id]
         assert d["casi"][0]["distanza_km"] > d["casi"][1]["distanza_km"]
+
+
+class TestGeoCheckConferma:
+    """'E' gia' giusta': il caso sparisce per sempre e non costa nulla."""
+
+    def test_marca_manual_e_il_caso_sparisce(self, client_geo):
+        c, ids, db = client_geo
+        r = c.post("/api/geo-check/confirm", json={"photo_ids": [ids["sospetta"]]})
+        assert r.status_code == 200 and r.json()["confermate"] == 1
+        from database.photos import get_photo_by_id
+        assert get_photo_by_id(db, ids["sospetta"])["location_source"] == "manual"
+        # manual e' fra le origini affidabili: il rilevatore non la discute piu'
+        assert c.get("/api/geo-check").json()["casi"] == []
+
+    def test_non_azzera_la_descrizione_e_non_accoda(self, client_geo):
+        c, ids, db = client_geo
+        c.post("/api/geo-check/confirm", json={"photo_ids": [ids["sospetta"]]})
+        from database.photos import get_photo_by_id
+        from database.queue import get_queue_counts
+        assert get_photo_by_id(db, ids["sospetta"])["description"] == "vecchia"
+        assert get_queue_counts(db)["pending"] == 0
+
+    def test_rifiuta_lista_vuota(self, client_geo):
+        c, _, _ = client_geo
+        assert c.post("/api/geo-check/confirm", json={"photo_ids": []}).status_code == 422
+
+    def test_richiede_autenticazione(self, client_geo):
+        c, ids, _ = client_geo
+        anon = TestClient(c.app)
+        assert anon.post("/api/geo-check/confirm",
+                         json={"photo_ids": [ids["sospetta"]]}).status_code == 401
