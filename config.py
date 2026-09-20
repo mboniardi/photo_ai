@@ -123,3 +123,13 @@ BACKUP_INTERVAL_MIN: int = int(os.environ.get("BACKUP_INTERVAL_MIN", 15))
 
 # Numero massimo di backup datati da conservare
 BACKUP_RETENTION: int = int(os.environ.get("BACKUP_RETENTION", 10))
+
+# ── Controllo di coerenza geografica ────────────────────────────────────
+# Taratura misurata su 1155 foto georeferenziate: 56 segnalazioni (4,8%)
+# raggruppate in 47 casi. Fra ±2h e ±24h il numero non cambia quasi —
+# il segnale è netto, non un effetto della soglia.
+GEO_MAX_GAP_ORE: float = float(os.environ.get("GEO_MAX_GAP_ORE", "2"))
+GEO_ACCORDO_KM: float = float(os.environ.get("GEO_ACCORDO_KM", "50"))
+GEO_FUORI_SCALA_KM: float = float(os.environ.get("GEO_FUORI_SCALA_KM", "150"))
+GEO_RAGGIO_GRUPPO_KM: float = float(os.environ.get("GEO_RAGGIO_GRUPPO_KM", "25"))
+GEO_FINESTRA_GRUPPO_ORE: float = float(os.environ.get("GEO_FINESTRA_GRUPPO_ORE", "3"))
