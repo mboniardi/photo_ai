@@ -2229,13 +2229,20 @@ createApp({
       }
     }
 
+    function _smaltisciGeoMappa(id) {
+      if (_geoMappe[id]) { _geoMappe[id].remove(); delete _geoMappe[id]; }
+    }
+
     function toggleCaso(caso) {
       caso.aperto = !caso.aperto;
-      if (!caso.aperto) return;
+      if (!caso.aperto) { _smaltisciGeoMappa(caso.id); return; }
       // La mappa si crea solo all'apertura: quarantasette mappe insieme
       // sarebbero tutte sprecate tranne quella che stai guardando.
       nextTick(() => {
-        if (_geoMappe[caso.id]) { _geoMappe[caso.id].invalidateSize(); return; }
+        // Il div #geomap-N viene distrutto da v-if quando il caso si chiude,
+        // quindi la mappa di un'apertura precedente non si può riusare: va
+        // smaltita e ricreata da zero sul nuovo div (come fa switchToMap).
+        _smaltisciGeoMappa(caso.id);
         const m = L.map('geomap-' + caso.id);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -2261,6 +2268,7 @@ createApp({
         location_name: caso.proposta.location_name,
       });
       if (r && r.ok) {
+        _smaltisciGeoMappa(caso.id);
         geoCasi.value = geoCasi.value.filter(c => c.id !== caso.id);
         geoAvviso.value = (r.mancanti && r.mancanti.length)
           ? `${r.mancanti.length} foto del caso non sono state aggiornate: non esistono più (probabilmente cestinate).`
@@ -2270,6 +2278,7 @@ createApp({
     }
 
     function ignoraCaso(caso) {
+      _smaltisciGeoMappa(caso.id);
       geoCasi.value = geoCasi.value.filter(c => c.id !== caso.id);
     }
 
