@@ -480,3 +480,69 @@ class TestMarkLocationConfirmed:
     def test_lista_vuota(self, tmp_db):
         from database.photos import mark_location_confirmed
         assert mark_location_confirmed(tmp_db, photo_ids=[]) == 0
+
+
+class TestFiltriFinoraMorti:
+    """Date, luogo, orientamento e formati multipli: presenti nel pannello
+    dell'interfaccia e ignorati dal codice. Qui si verificano davvero."""
+
+    def _foto(self, db, *, data=None, luogo=None, lat=None, w=4, h=3, fmt="jpg"):
+        import uuid
+        from database.photos import insert_photo, update_photo
+        pid = insert_photo(db, file_path=f"/x/{uuid.uuid4()}.{fmt}", folder_path="/x",
+                           filename=f"a.{fmt}", format=fmt, file_size=1, width=w, height=h)
+        campi = {}
+        if data: campi["exif_date"] = data
+        if luogo: campi["location_name"] = luogo
+        if lat is not None: campi.update(latitude=lat, longitude=1.0)
+        if campi: update_photo(db, pid, **campi)
+        return pid
+
+    def _ids(self, db, **f):
+        from database.photos import get_photos
+        return [r["id"] for r in get_photos(db, **f)]
+
+    def test_filtro_su_presenza_di_coordinate(self, tmp_db):
+        senza = self._foto(tmp_db)
+        con = self._foto(tmp_db, lat=45.0)
+        assert self._ids(tmp_db, has_location=False) == [senza]
+        assert self._ids(tmp_db, has_location=True) == [con]
+        assert sorted(self._ids(tmp_db)) == sorted([senza, con])
+
+    def test_filtro_data_da_e_a(self, tmp_db):
+        vecchia = self._foto(tmp_db, data="2006-07-05T10:00:00")
+        nuova = self._foto(tmp_db, data="2026-04-01T10:00:00")
+        assert self._ids(tmp_db, date_from="2020-01-01") == [nuova]
+        assert self._ids(tmp_db, date_to="2020-01-01") == [vecchia]
+        assert self._ids(tmp_db, date_from="2006-07-01", date_to="2006-07-31") == [vecchia]
+
+    def test_filtro_luogo_e_parziale(self, tmp_db):
+        luxor = self._foto(tmp_db, luogo="Tempio di Luxor, Egitto")
+        self._foto(tmp_db, luogo="Necropoli di Saqqara")
+        assert self._ids(tmp_db, location="luxor") == [luxor]
+
+    def test_filtro_orientamento(self, tmp_db):
+        oriz = self._foto(tmp_db, w=100, h=50)
+        vert = self._foto(tmp_db, w=50, h=100)
+        quad = self._foto(tmp_db, w=80, h=80)
+        assert self._ids(tmp_db, orientation="horizontal") == [oriz]
+        assert self._ids(tmp_db, orientation="vertical") == [vert]
+        assert self._ids(tmp_db, orientation="square") == [quad]
+
+    def test_piu_formati_insieme(self, tmp_db):
+        """Il client manda 'jpg,png': prima diventava format = 'jpg,png' e non
+        corrispondeva a nulla."""
+        j = self._foto(tmp_db, fmt="jpg")
+        p_ = self._foto(tmp_db, fmt="png")
+        self._foto(tmp_db, fmt="cr2")
+        assert sorted(self._ids(tmp_db, format="jpg,png")) == sorted([j, p_])
+        assert self._ids(tmp_db, format="jpg") == [j]
+
+    def test_i_filtri_valgono_anche_per_seleziona_tutte(self, tmp_db):
+        """La griglia e la selezione devono vedere le stesse foto."""
+        from database.photos import get_photos, get_photo_ids_for_selection
+        self._foto(tmp_db, lat=45.0)
+        senza = self._foto(tmp_db)
+        griglia = [r["id"] for r in get_photos(tmp_db, has_location=False)]
+        selezione = get_photo_ids_for_selection(tmp_db, has_location=False)["ids"]
+        assert griglia == selezione == [senza]

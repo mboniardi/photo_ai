@@ -283,3 +283,58 @@ class TestPhotoIds:
     def test_richiede_autenticazione(self, client_with_photo):
         c, _, _ = client_with_photo
         assert TestClient(c.app).get("/api/photos/ids").status_code == 401
+
+
+class TestFiltriDelleRotte:
+    """I filtri del pannello devono arrivare fino al database: date, luogo,
+    orientamento e coordinate erano nell'interfaccia e ignorati dalle rotte."""
+
+    def _prepara(self, db, tmp_path):
+        from database.photos import insert_photo, update_photo
+        def f(nome, **campi):
+            pth = str(tmp_path / nome)
+            Image.new("RGB", (campi.pop("w", 60), campi.pop("h", 40))).save(pth, "JPEG")
+            pid = insert_photo(db, file_path=pth, folder_path=str(tmp_path), filename=nome,
+                               format="jpg", file_size=100, width=60, height=40)
+            if campi: update_photo(db, pid, **campi)
+            return pid
+        return f
+
+    def test_filtro_coordinate(self, client_with_photo, tmp_path):
+        import config
+        c, pid, _ = client_with_photo          # la foto della fixture non ha coordinate
+        f = self._prepara(config.LOCAL_DB, tmp_path)
+        con = f("c.jpg", latitude=45.0, longitude=9.0)
+        senza = [p["id"] for p in c.get("/api/photos", params={"has_location": "false"}).json()]
+        assert pid in senza and con not in senza
+        conn = [p["id"] for p in c.get("/api/photos", params={"has_location": "true"}).json()]
+        assert conn == [con]
+
+    def test_filtro_date(self, client_with_photo, tmp_path):
+        import config
+        c, _, _ = client_with_photo
+        f = self._prepara(config.LOCAL_DB, tmp_path)
+        vecchia = f("v.jpg", exif_date="2006-07-05T10:00:00")
+        f("n.jpg", exif_date="2026-04-01T10:00:00")
+        ids = [p["id"] for p in c.get("/api/photos", params={"date_to": "2020-01-01"}).json()]
+        assert ids == [vecchia]
+
+    def test_filtro_luogo(self, client_with_photo, tmp_path):
+        import config
+        c, _, _ = client_with_photo
+        f = self._prepara(config.LOCAL_DB, tmp_path)
+        lux = f("l.jpg", location_name="Tempio di Luxor")
+        f("s.jpg", location_name="Saqqara")
+        ids = [p["id"] for p in c.get("/api/photos", params={"location": "luxor"}).json()]
+        assert ids == [lux]
+
+    def test_gli_stessi_filtri_valgono_per_gli_id(self, client_with_photo, tmp_path):
+        """La griglia e 'Seleziona tutte' devono vedere le stesse foto."""
+        import config
+        c, _, _ = client_with_photo
+        f = self._prepara(config.LOCAL_DB, tmp_path)
+        f("g.jpg", latitude=45.0, longitude=9.0)
+        par = {"has_location": "false"}
+        griglia = sorted(p["id"] for p in c.get("/api/photos", params=par).json())
+        selezione = sorted(c.get("/api/photos/ids", params=par).json()["ids"])
+        assert griglia == selezione

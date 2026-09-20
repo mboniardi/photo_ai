@@ -73,7 +73,7 @@ def _filtri_foto(
     *,
     folder_path=None, is_favorite=None, is_trash=None, analyzed_only=None,
     min_score=None, format=None, date_from=None, date_to=None,
-    location=None, orientation=None,
+    location=None, orientation=None, has_location=None,
 ) -> tuple[list, list]:
     """
     Traduce i filtri della griglia in condizioni SQL e parametri.
@@ -104,8 +104,19 @@ def _filtri_foto(
         conditions.append("overall_score >= ?")
         params.append(min_score)
     if format is not None:
-        conditions.append("format = ?")
-        params.append(format)
+        # Il client manda piu' formati separati da virgola: prima diventava
+        # `format = 'jpg,png'` e non corrispondeva a niente.
+        formati = [f.strip() for f in str(format).split(",") if f.strip()]
+        if len(formati) == 1:
+            conditions.append("format = ?")
+            params.append(formati[0])
+        elif formati:
+            conditions.append("format IN (%s)" % ",".join("?" * len(formati)))
+            params.extend(formati)
+    if has_location is True:
+        conditions.append("latitude IS NOT NULL")
+    elif has_location is False:
+        conditions.append("latitude IS NULL")
     if date_from is not None:
         conditions.append("substr(exif_date, 1, 10) >= ?")
         params.append(date_from)
@@ -138,6 +149,7 @@ def get_photos(
     date_to: Optional[str] = None,
     location: Optional[str] = None,
     orientation: Optional[str] = None,
+    has_location: Optional[bool] = None,
     sort_by: str = "id",
     sort_desc: bool = False,
     limit: int = 100,
@@ -154,7 +166,7 @@ def get_photos(
         folder_path=folder_path, is_favorite=is_favorite, is_trash=is_trash,
         analyzed_only=analyzed_only, min_score=min_score, format=format,
         date_from=date_from, date_to=date_to, location=location,
-        orientation=orientation,
+        orientation=orientation, has_location=has_location,
     )
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     order = f"ORDER BY {sort_by} {'DESC' if sort_desc else 'ASC'}"

@@ -49,6 +49,11 @@ def list_photos(
     is_trash: Optional[bool] = None,
     analyzed: Optional[bool] = None,
     format: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    location: Optional[str] = None,
+    orientation: Optional[str] = None,
+    has_location: Optional[bool] = None,
     limit: int = 100,
     offset: int = 0,
 ):
@@ -62,6 +67,11 @@ def list_photos(
         is_trash=is_trash,
         analyzed_only=analyzed,
         format=format,
+        date_from=date_from,
+        date_to=date_to,
+        location=location,
+        orientation=orientation,
+        has_location=has_location,
         limit=limit,
         offset=offset,
     )
@@ -91,6 +101,11 @@ def photo_ids_for_selection(
     is_trash: Optional[bool] = None,
     analyzed: Optional[bool] = None,
     format: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    location: Optional[str] = None,
+    orientation: Optional[str] = None,
+    has_location: Optional[bool] = None,
 ):
     """
     Gli id di tutto cio' che corrisponde ai filtri, per "seleziona tutte".
@@ -106,6 +121,8 @@ def photo_ids_for_selection(
         config.LOCAL_DB,
         folder_path=folder_path, min_score=min_score, is_favorite=is_favorite,
         is_trash=is_trash, analyzed_only=analyzed, format=format,
+        date_from=date_from, date_to=date_to, location=location,
+        orientation=orientation, has_location=has_location,
     )
 
 
