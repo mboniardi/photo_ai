@@ -163,6 +163,14 @@
     .queue-stat-done { color: var(--green); }
     .queue-stat-pending { color: var(--amber); }
     .queue-stat-error { color: var(--red); }
+    .queue-lib { font-size: 11px; font-family: 'DM Mono', monospace; margin-bottom: 8px; }
+    .queue-lib-row { display: flex; align-items: baseline; gap: 6px; padding: 1px 0; }
+    .queue-lib-label { color: var(--muted); flex: 1; }
+    .queue-lib-num { font-weight: 600; }
+    .queue-lib-num.pending { color: var(--amber); }
+    .queue-lib-num.zero { color: var(--green); }
+    .queue-lib-total { color: var(--muted); border-top: 1px solid var(--border);
+                       margin-top: 4px; padding-top: 4px; }
     .queue-current { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 8px; font-family: 'DM Mono', monospace; }
     .queue-buttons { display: flex; gap: 6px; }
     .queue-btn {
@@ -608,9 +616,23 @@
             <div class="queue-progress-bar">
               <div class="queue-progress-fill" :style="{ width: queueProgress + '%' }"></div>
             </div>
+            <div class="queue-lib">
+              <div class="queue-lib-row">
+                <span class="queue-lib-label">da analizzare (AI)</span>
+                <span class="queue-lib-num" :class="lib.to_analyze ? 'pending' : 'zero'">{{ fmtNum(lib.to_analyze) }}</span>
+              </div>
+              <div class="queue-lib-row">
+                <span class="queue-lib-label">da vettorizzare</span>
+                <span class="queue-lib-num" :class="lib.to_embed ? 'pending' : 'zero'">{{ fmtNum(lib.to_embed) }}</span>
+              </div>
+              <div class="queue-lib-row queue-lib-total">
+                <span class="queue-lib-label">complete</span>
+                <span>{{ fmtNum(lib.complete) }} / {{ fmtNum(lib.total) }}</span>
+              </div>
+            </div>
             <div class="queue-stats">
-              <span class="queue-stat-done">✓ {{ queue.done || 0 }}</span>
-              <span class="queue-stat-pending">⏳ {{ queue.pending || 0 }}</span>
+              <span class="queue-stat-pending">⏳ {{ queue.pending || 0 }} in coda</span>
+              <span v-if="(queue.processing || 0) > 0">⚙ {{ queue.processing }}</span>
               <span v-if="(queue.error || 0) > 0" class="queue-stat-error">✗ {{ queue.error }}</span>
             </div>
             <div v-if="queue.current_photo" class="queue-current">▶ {{ queue.current_photo }}</div>
@@ -1590,12 +1612,23 @@ createApp({
 
     /* QUEUE */
     const queueOpen = ref(true);
-    const queue = reactive({ pending: 0, done: 0, error: 0, is_running: false, is_paused: false, current_photo: null });
+    const queue = reactive({
+      pending: 0, processing: 0, done: 0, error: 0,
+      is_running: false, is_paused: false, current_photo: null,
+      library: { total: 0, to_analyze: 0, to_embed: 0, complete: 0 },
+    });
+
+    // La coda e' cio' che il worker sta facendo ora; la libreria e' quanto
+    // manca in totale. Il progresso segue la seconda: i 'done' della coda sono
+    // un registro storico e segnavano 100% con migliaia di foto mai analizzate.
+    const lib = computed(() => queue.library || { total: 0, to_analyze: 0, to_embed: 0, complete: 0 });
+
+    const fmtNum = (n) => (n || 0).toLocaleString('it-IT');
 
     const queueProgress = computed(() => {
-      const total = (queue.pending || 0) + (queue.done || 0) + (queue.error || 0);
-      if (!total) return 0;
-      return Math.round(((queue.done || 0) / total) * 100);
+      const l = lib.value;
+      if (!l.total) return 0;
+      return Math.round((l.complete / l.total) * 100);
     });
 
     let queueInterval = null;
@@ -2190,7 +2223,7 @@ createApp({
       showFilters, filters, activeFilterCount, filterBadges, clearFilter, clearAllFilters,
       selectMode, selectedIds, toggleSelectMode, selectAll, clearSelection, onPhotoClick,
       downloadZip, bulkFavorite, bulkTrash, bulkAddToQueue,
-      queueOpen, queue, queueProgress, pauseQueue, resumeQueue, retryErrors, clearQueue,
+      queueOpen, queue, lib, fmtNum, queueProgress, pauseQueue, resumeQueue, retryErrors, clearQueue,
       lightbox, lightboxIndex, openLightbox, closeLightbox, lightboxPrev, lightboxNext,
       lbSubjects, lbAtmosphere, lbColors, lbStrengths, lbWeaknesses,
       saveDescription, toggleFavorite, toggleTrash, reanalyze,

@@ -7,7 +7,7 @@ from database.queue import (
     add_to_queue, get_queue_counts, remove_queue_item,
     get_next_pending, retry_errors, clear_queue,
 )
-from database.photos import get_photos, count_photos
+from database.photos import get_photos, count_photos, count_library_status
 import config
 
 router = APIRouter(prefix="/api/queue", tags=["queue"])
@@ -34,11 +34,23 @@ class FolderQueueRequest(BaseModel):
     priority: int = 5
 
 
+def _embedding_dim() -> int:
+    """Dimensione attesa dei vettori, dal modello configurato."""
+    try:
+        from api.search import get_embedder
+        return get_embedder().dimension
+    except Exception:
+        return 1024
+
+
 @router.get("/status")
 def queue_status():
     counts = get_queue_counts(config.LOCAL_DB)
     return {
         **counts,
+        # Lo stato della libreria: quante foto mancano davvero all'appello.
+        # I contatori della coda descrivono solo il lavoro accodato.
+        "library": count_library_status(config.LOCAL_DB, _embedding_dim()),
         "is_running": _worker.is_running if _worker else False,
         "is_paused":  _worker.is_paused  if _worker else False,
         "current_photo": _worker.current_photo_name if _worker else None,

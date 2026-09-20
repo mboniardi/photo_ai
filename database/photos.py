@@ -219,3 +219,36 @@ def update_photo(db_path: Optional[str], photo_id: int, **fields) -> None:
             f"UPDATE photos SET {set_clause} WHERE id = ?",
             values,
         )
+
+
+def count_library_status(db_path: Optional[str] = None,
+                         embedding_dim: int = 1024) -> dict:
+    """
+    Quanto manca alla libreria, non alla coda.
+
+    La tabella analysis_queue e' un registro storico: le righe 'done' restano
+    anche dopo che il lavoro e' finito, e non dicono nulla sulle foto mai
+    accodate. Questi contatori guardano direttamente le foto.
+
+    Un vettore di dimensione diversa da quella del modello in uso e' inservibile
+    per la ricerca (search.py lo scarta), quindi conta come "da vettorizzare".
+    """
+    # Un embedding malformato farebbe fallire json_array_length: json_valid()
+    # lo intercetta prima.
+    dim = """
+        CASE WHEN embedding IS NULL OR embedding = '' OR NOT json_valid(embedding)
+             THEN -1 ELSE json_array_length(embedding) END
+    """
+    sql = f"""
+        SELECT
+            COUNT(*)                                            AS total,
+            SUM(analyzed_at IS NULL)                            AS to_analyze,
+            SUM(analyzed_at IS NOT NULL AND {dim} <> ?)         AS to_embed,
+            SUM(analyzed_at IS NOT NULL AND {dim}  = ?)         AS complete
+        FROM photos
+        WHERE is_trash = 0 OR is_trash IS NULL
+    """
+    with get_db(db_path) as conn:
+        row = conn.execute(sql, (embedding_dim, embedding_dim)).fetchone()
+
+    return {k: int(row[k] or 0) for k in ("total", "to_analyze", "to_embed", "complete")}

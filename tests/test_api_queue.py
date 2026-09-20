@@ -94,3 +94,13 @@ class TestDeleteQueueItem:
         assert del_resp.status_code == 200
         data = c.get("/api/queue/status").json()
         assert data["pending"] == 0
+
+
+class TestQueueStatusReportsLibrary:
+    def test_status_includes_library_counts(self, client_with_photo):
+        client, _ = client_with_photo
+        d = client.get("/api/queue/status").json()
+        assert "library" in d, "lo stato non riporta i contatori di libreria"
+        for k in ("total", "to_analyze", "to_embed", "complete"):
+            assert k in d["library"], f"manca {k}"
+            assert isinstance(d["library"][k], int)

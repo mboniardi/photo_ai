@@ -189,3 +189,49 @@ class TestCountPhotos:
         insert_photo(tmp_db, **PHOTO_DEFAULTS)
         assert count_photos(tmp_db, folder_path="/mnt/nas/foto") == 1
         assert count_photos(tmp_db, folder_path="/other") == 0
+
+
+class TestLibraryStatusCounts:
+    """Il pannello della coda mostrava le righe di analysis_queue, che e' un
+    registro storico: a coda vuota segnava 100% con migliaia di foto mai
+    analizzate. Questi contatori descrivono la LIBRERIA."""
+
+    def _foto(self, db, *, analizzata=False, emb=None, trash=0):
+        import json
+        from database.photos import insert_photo, update_photo
+        import uuid
+        pid = insert_photo(db, file_path=f"/x/{uuid.uuid4()}.jpg", folder_path="/x",
+                           filename="a.jpg", format="jpg", file_size=1, width=4, height=3)
+        campi = {}
+        if analizzata: campi["analyzed_at"] = "2026-01-01T00:00:00"
+        if emb is not None: campi["embedding"] = json.dumps(emb)
+        if trash: campi["is_trash"] = 1
+        if campi: update_photo(db, pid, **campi)
+        return pid
+
+    def test_counts_split_ai_and_embedding(self, tmp_db):
+        from database.photos import count_library_status
+        self._foto(tmp_db)                                      # mai analizzata
+        self._foto(tmp_db)                                      # mai analizzata
+        self._foto(tmp_db, analizzata=True, emb=[0.1] * 4)      # completa
+        self._foto(tmp_db, analizzata=True, emb=[0.1] * 99)     # dimensione sbagliata
+        self._foto(tmp_db, analizzata=True)                     # senza vettore
+
+        s = count_library_status(tmp_db, embedding_dim=4)
+        assert s["total"] == 5
+        assert s["to_analyze"] == 2
+        assert s["to_embed"] == 2      # dimensione errata + mancante
+        assert s["complete"] == 1
+
+    def test_trashed_photos_are_excluded(self, tmp_db):
+        from database.photos import count_library_status
+        self._foto(tmp_db)
+        self._foto(tmp_db, trash=1)
+        s = count_library_status(tmp_db, embedding_dim=4)
+        assert s["total"] == 1 and s["to_analyze"] == 1
+
+    def test_empty_embedding_counts_as_missing(self, tmp_db):
+        from database.photos import count_library_status
+        self._foto(tmp_db, analizzata=True, emb=[])
+        s = count_library_status(tmp_db, embedding_dim=4)
+        assert s["to_embed"] == 1 and s["complete"] == 0
