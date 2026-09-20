@@ -134,3 +134,33 @@ def remove_queue_item(db_path: Optional[str], queue_id: int) -> None:
             "DELETE FROM analysis_queue WHERE id = ? AND status = 'pending'",
             (queue_id,),
         )
+
+
+def add_unanalyzed_to_queue(db_path: Optional[str] = None,
+                            *,
+                            photo_ids: list,
+                            priority: int = 5) -> int:
+    """
+    Accoda solo le foto che non hanno ancora un'analisi. Ritorna quante.
+
+    Il filtro vive qui, e non nel chiamante, perche' l'analisi AI si paga a
+    foto: `api/folders.py` accodava l'intera cartella, rifacendo — e
+    rifatturando — descrizioni gia' esistenti. Vale anche per gli id che
+    arrivano da una scansione, che includono le foto ripescate dal cestino:
+    quelle una descrizione possono gia' averla.
+    """
+    if not photo_ids:
+        return 0
+    segnaposto = ",".join("?" * len(photo_ids))
+    with get_db(db_path) as conn:
+        da_fare = [
+            r["id"] for r in conn.execute(
+                f"""SELECT id FROM photos
+                    WHERE id IN ({segnaposto}) AND analyzed_at IS NULL
+                      AND (is_trash = 0 OR is_trash IS NULL)""",
+                list(photo_ids),
+            )
+        ]
+    for pid in da_fare:
+        add_to_queue(db_path, photo_id=pid, priority=priority)
+    return len(da_fare)

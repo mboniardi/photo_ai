@@ -279,3 +279,40 @@ class TestGeoCheckQueries:
         # la posizione e i dati dell'utente restano
         assert p["latitude"] == 25.0 and p["location_name"] == "Luxor"
         assert p["is_favorite"] == 1 and p["user_description"] == "mia nota"
+
+
+class TestUnanalyzedPhotoIds:
+    def _foto(self, db, cartella, *, analizzata=False, trash=0):
+        import uuid
+        from database.photos import insert_photo, update_photo
+        pid = insert_photo(db, file_path=f"{cartella}/{uuid.uuid4()}.jpg", folder_path=cartella,
+                           filename="a.jpg", format="jpg", file_size=1, width=4, height=3)
+        campi = {}
+        if analizzata: campi["analyzed_at"] = "2026-01-01T00:00:00"
+        if trash: campi["is_trash"] = 1
+        if campi: update_photo(db, pid, **campi)
+        return pid
+
+    def test_solo_le_non_analizzate_della_cartella(self, tmp_db):
+        from database.photos import get_unanalyzed_photo_ids
+        da_fare = self._foto(tmp_db, "/a")
+        self._foto(tmp_db, "/a", analizzata=True)
+        self._foto(tmp_db, "/b")
+        assert get_unanalyzed_photo_ids(tmp_db, folder_path="/a") == [da_fare]
+
+    def test_esclude_il_cestino(self, tmp_db):
+        from database.photos import get_unanalyzed_photo_ids
+        self._foto(tmp_db, "/a", trash=1)
+        assert get_unanalyzed_photo_ids(tmp_db, folder_path="/a") == []
+
+    def test_senza_cartella_prende_tutta_la_libreria(self, tmp_db):
+        from database.photos import get_unanalyzed_photo_ids
+        a = self._foto(tmp_db, "/a"); b = self._foto(tmp_db, "/b")
+        assert sorted(get_unanalyzed_photo_ids(tmp_db)) == sorted([a, b])
+
+    def test_nessun_limite_arbitrario(self, tmp_db):
+        """api/folders.py aveva limit=10000: su una cartella piu' grande
+        troncava in silenzio."""
+        from database.photos import get_unanalyzed_photo_ids
+        attesi = [self._foto(tmp_db, "/a") for _ in range(120)]
+        assert len(get_unanalyzed_photo_ids(tmp_db, folder_path="/a")) == len(attesi)

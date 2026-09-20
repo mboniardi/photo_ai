@@ -294,3 +294,23 @@ def clear_analysis(db_path: Optional[str], photo_id: int) -> None:
             """,
             (photo_id,),
         )
+
+
+def get_unanalyzed_photo_ids(db_path: Optional[str] = None,
+                             folder_path: Optional[str] = None) -> list[int]:
+    """
+    Gli id delle foto che non hanno ancora un'analisi, eventualmente limitati
+    a una cartella.
+
+    Senza limite arbitrario: il chiamante precedente usava `limit=10000`, che
+    su una cartella piu' grande avrebbe troncato senza dirlo.
+    """
+    sql = ["SELECT id FROM photos WHERE analyzed_at IS NULL",
+           "AND (is_trash = 0 OR is_trash IS NULL)"]
+    params: list = []
+    if folder_path:
+        sql.append("AND folder_path = ?")
+        params.append(folder_path)
+    sql.append("ORDER BY id")
+    with get_db(db_path) as conn:
+        return [r["id"] for r in conn.execute(" ".join(sql), params)]

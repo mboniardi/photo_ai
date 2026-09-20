@@ -127,3 +127,46 @@ class TestGetQueueStatus:
         assert counts["pending"] == 1
         assert counts["done"] == 1
         assert counts["error"] == 1
+
+
+class TestAddUnanalyzedToQueue:
+    """Accodare costa: l'analisi AI e' a pagamento. Il filtro sta qui, in SQL,
+    perche' i chiamanti sbagliano (api/folders.py accodava tutto)."""
+
+    def _foto(self, db, *, analizzata=False):
+        import uuid
+        from database.photos import insert_photo, update_photo
+        pid = insert_photo(db, file_path=f"/x/{uuid.uuid4()}.jpg", folder_path="/x",
+                           filename="a.jpg", format="jpg", file_size=1, width=4, height=3)
+        if analizzata:
+            update_photo(db, pid, analyzed_at="2026-01-01T00:00:00", description="gia' fatta")
+        return pid
+
+    def test_accoda_solo_le_non_analizzate(self, tmp_db):
+        from database.queue import add_unanalyzed_to_queue, get_queue_counts
+        nuova = self._foto(tmp_db)
+        vecchia = self._foto(tmp_db, analizzata=True)
+        n = add_unanalyzed_to_queue(tmp_db, photo_ids=[nuova, vecchia])
+        assert n == 1
+        assert get_queue_counts(tmp_db)["pending"] == 1
+
+    def test_una_foto_gia_analizzata_non_entra_mai(self, tmp_db):
+        from database.queue import add_unanalyzed_to_queue, get_queue_counts
+        vecchia = self._foto(tmp_db, analizzata=True)
+        assert add_unanalyzed_to_queue(tmp_db, photo_ids=[vecchia]) == 0
+        assert get_queue_counts(tmp_db)["pending"] == 0
+
+    def test_lista_vuota(self, tmp_db):
+        from database.queue import add_unanalyzed_to_queue
+        assert add_unanalyzed_to_queue(tmp_db, photo_ids=[]) == 0
+
+    def test_non_duplica_chi_e_gia_in_coda(self, tmp_db):
+        from database.queue import add_unanalyzed_to_queue, get_queue_counts
+        pid = self._foto(tmp_db)
+        add_unanalyzed_to_queue(tmp_db, photo_ids=[pid])
+        add_unanalyzed_to_queue(tmp_db, photo_ids=[pid])
+        assert get_queue_counts(tmp_db)["pending"] == 1
+
+    def test_id_inesistente_viene_ignorato(self, tmp_db):
+        from database.queue import add_unanalyzed_to_queue
+        assert add_unanalyzed_to_queue(tmp_db, photo_ids=[999999]) == 0
