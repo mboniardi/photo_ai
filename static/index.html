@@ -801,7 +801,7 @@
           <button class="bulk-btn" @click="downloadZip">⬇ Download ZIP</button>
           <button class="bulk-btn" @click="bulkFavorite">⭐ Favorite</button>
           <button class="bulk-btn danger" @click="bulkTrash">🗑 Trash</button>
-          <button class="bulk-btn" @click="openBulkLocation">📍 Posizione</button>
+          <button class="bulk-btn" @click="openBulkLocation()">📍 Posizione</button>
           <button class="bulk-btn" @click="bulkAddToQueue">⚡ Analyze</button>
           <button class="bulk-btn" style="margin-left:auto" @click="clearSelection">Clear</button>
         </div>
@@ -1925,7 +1925,10 @@ createApp({
     }
 
     function openBulkLocation(ids = null, geoCaso = null) {
-      ids = ids || [...selectedIds.value];
+      // Array.isArray e non `ids ||`: se il template la lega come
+      // @click="openBulkLocation" senza parentesi, Vue passa il MouseEvent,
+      // che e' truthy e non ha length — la funzione usciva in silenzio.
+      if (!Array.isArray(ids)) { ids = [...selectedIds.value]; geoCaso = null; }
       if (!ids.length) return;
       Object.assign(locationEditor, {
         bulkIds: ids, conferma: 0, photoId: null, geoCaso,
