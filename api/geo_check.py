@@ -1,11 +1,11 @@
 """Route /api/geo-check — foto collocate in un posto incoerente con le vicine."""
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 import config
-from database.photos import clear_analysis, get_photos_for_geo_check, update_photo
+from database.photos import clear_analysis, get_photo_by_id, get_photos_for_geo_check, update_photo
 from database.queue import add_to_queue
 from services.geo_anomaly import prepara, rileva, raggruppa
 
@@ -74,9 +74,20 @@ def accetta_proposta(req: AcceptRequest):
     sbagliato. La nuova analisi riceve la posizione corretta come contesto,
     perché il worker costruisce il proprio suggerimento dai campi che qui
     vengono scritti.
+
+    Un id che non esiste più non è un errore: tra il caricamento dell'elenco
+    e l'accettazione la foto può essere stata cestinata. Non blocchiamo la
+    correzione delle altre foto del gruppo per questo: la saltiamo e la
+    segnaliamo nella risposta invece di far fallire l'intera richiesta (le
+    foreign key sono attive, quindi un id inesistente farebbe esplodere
+    `add_to_queue`, e ogni scrittura precedente nel ciclo sarebbe comunque
+    già stata committata in modo permanente).
     """
+    mancanti = [pid for pid in req.photo_ids if get_photo_by_id(config.LOCAL_DB, pid) is None]
+    validi = [pid for pid in req.photo_ids if pid not in mancanti]
+
     aggiornate = in_coda = 0
-    for pid in req.photo_ids:
+    for pid in validi:
         clear_analysis(config.LOCAL_DB, pid)
         update_photo(
             config.LOCAL_DB, pid,
@@ -90,4 +101,4 @@ def accetta_proposta(req: AcceptRequest):
         add_to_queue(config.LOCAL_DB, photo_id=pid, priority=1)
         in_coda += 1
 
-    return {"ok": True, "aggiornate": aggiornate, "in_coda": in_coda}
+    return {"ok": True, "aggiornate": aggiornate, "in_coda": in_coda, "mancanti": mancanti}
