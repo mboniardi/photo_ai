@@ -869,7 +869,13 @@
               <button class="geo-btn primary" @click="accettaCaso(caso)">
                 ✓ Accetta «{{ caso.proposta.location_name || 'la posizione proposta' }}»
               </button>
-              <button class="geo-btn" @click="ignoraCaso(caso)">Ignora</button>
+              <button class="geo-btn" @click="correggiCaso(caso)" title="Nessuna delle due è giusta: scegli tu il punto">
+                ✎ Correggi a mano
+              </button>
+              <button class="geo-btn" @click="confermaCaso(caso)" title="La posizione attuale va bene: è la proposta a sbagliare">
+                ✓ È già giusta
+              </button>
+              <button class="geo-btn" style="margin-left:auto" @click="ignoraCaso(caso)">Ignora</button>
             </div>
           </div>
         </div>
@@ -1451,6 +1457,7 @@ createApp({
       saving: false,
       bulkIds: null,     // non nullo quando si assegna a un gruppo
       conferma: 0,       // quante del gruppo hanno gia' una posizione
+      geoCaso: null,     // il caso di Check location, se si arriva da li\
     });
     let _locMap = null;
     let _locMarker = null;
@@ -1820,6 +1827,7 @@ createApp({
       if (!lightbox.photo) return;
       locationEditor.bulkIds   = null;
       locationEditor.conferma  = 0;
+      locationEditor.geoCaso   = null;
       locationEditor.photoId   = lightbox.photo.id;
       locationEditor.pendingLat = lightbox.photo.latitude  ?? null;
       locationEditor.pendingLon = lightbox.photo.longitude ?? null;
@@ -1836,6 +1844,7 @@ createApp({
       locationEditor.open = false;
       locationEditor.bulkIds = null;
       locationEditor.conferma = 0;
+      locationEditor.geoCaso = null;
       if (_locMap) { _locMap.remove(); _locMap = null; _locMarker = null; }
     }
 
@@ -1915,11 +1924,11 @@ createApp({
       } catch { locationEditor.searchError = 'Luogo non trovato'; }
     }
 
-    function openBulkLocation() {
-      const ids = [...selectedIds.value];
+    function openBulkLocation(ids = null, geoCaso = null) {
+      ids = ids || [...selectedIds.value];
       if (!ids.length) return;
       Object.assign(locationEditor, {
-        bulkIds: ids, conferma: 0, photoId: null,
+        bulkIds: ids, conferma: 0, photoId: null, geoCaso,
         pendingLat: null, pendingLon: null, pendingName: '',
         searchQuery: '', searchError: '', saving: false, open: true,
       });
@@ -1952,6 +1961,9 @@ createApp({
       // e' una perdita di informazione, e va fatta di proposito.
       if (locationEditor.bulkIds) {
         if (locationEditor.pendingLat == null) return;
+        // Da Check location non si chiede nulla: le foto del caso hanno gia'
+        // una posizione ed e' proprio quella che stiamo correggendo.
+        if (locationEditor.geoCaso) return applicaCorrezioneGeo();
         const gia = _selezionateGiaPosizionate();
         if (gia > 0) { locationEditor.conferma = gia; return; }
         return applicaBulkLocation(false);
@@ -2372,6 +2384,48 @@ createApp({
       });
     }
 
+    function correggiCaso(caso) {
+      // Ne' la posizione attuale ne' la proposta vanno bene: scegli tu il punto.
+      openBulkLocation(caso.photo_ids, caso);
+    }
+
+    async function applicaCorrezioneGeo() {
+      const caso = locationEditor.geoCaso;
+      locationEditor.saving = true;
+      // Passa da /accept e non dall'assegnazione di massa normale: se la
+      // posizione era sbagliata lo e' anche la descrizione scritta a partire
+      // da quella, quindi va azzerata e la foto rianalizzata.
+      const r = await apiPost('/api/geo-check/accept', {
+        photo_ids: caso.photo_ids,
+        latitude: locationEditor.pendingLat,
+        longitude: locationEditor.pendingLon,
+        location_name: locationEditor.pendingName || null,
+      });
+      locationEditor.saving = false;
+      if (!r?.ok) { showToast('Errore nella correzione', 'error'); return; }
+      _chiudiCaso(caso, r.mancanti);
+      closeLocationEditor();
+      showToast(`${r.aggiornate} foto corrette e rimesse in analisi`, 'success');
+    }
+
+    async function confermaCaso(caso) {
+      // La posizione attuale e' giusta: si marca 'manual' e basta. Niente
+      // rianalisi, quindi nessun costo.
+      const r = await apiPost('/api/geo-check/confirm', { photo_ids: caso.photo_ids });
+      if (!r?.ok) { showToast('Errore nella conferma', 'error'); return; }
+      _chiudiCaso(caso, null);
+      showToast(`${r.confermate} foto confermate — non verranno più segnalate`, 'success');
+    }
+
+    function _chiudiCaso(caso, mancanti) {
+      _smaltisciGeoMappa(caso.id);
+      geoCasi.value = geoCasi.value.filter(c => c.id !== caso.id);
+      geoAvviso.value = (mancanti && mancanti.length)
+        ? `${mancanti.length} foto del caso non sono state aggiornate: non esistono più (probabilmente cestinate).`
+        : '';
+      fetchQueueStatus();
+    }
+
     async function accettaCaso(caso) {
       const r = await apiPost('/api/geo-check/accept', {
         photo_ids: caso.photo_ids,
@@ -2379,14 +2433,7 @@ createApp({
         longitude: caso.proposta.longitude,
         location_name: caso.proposta.location_name,
       });
-      if (r && r.ok) {
-        _smaltisciGeoMappa(caso.id);
-        geoCasi.value = geoCasi.value.filter(c => c.id !== caso.id);
-        geoAvviso.value = (r.mancanti && r.mancanti.length)
-          ? `${r.mancanti.length} foto del caso non sono state aggiornate: non esistono più (probabilmente cestinate).`
-          : '';
-        fetchQueueStatus();
-      }
+      if (r && r.ok) _chiudiCaso(caso, r.mancanti);
     }
 
     function ignoraCaso(caso) {
@@ -2495,7 +2542,7 @@ createApp({
       showAddFolder, addFolderLoading, addFolderForm, openAddFolder, submitAddFolder,
       currentView, mapSelectedPhoto, switchToMap, switchToGrid, openMapPhoto,
       geoCasi, geoStats, geoLoading, geoAvviso, switchToGeoCheck, loadGeoCheck,
-      toggleCaso, accettaCaso, ignoraCaso,
+      toggleCaso, accettaCaso, correggiCaso, confermaCaso, ignoraCaso,
       browserRoot, browserCurrentPath, browserDirs, browserLoading, browserError, browserBreadcrumbs, browseTo, selectBrowserPath,
       showSettingsModal, savingSettings, testingAi, testResult, settingsForm,
       purgingTrash, purgeResult, purgeTrash,
