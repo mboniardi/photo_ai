@@ -74,7 +74,9 @@ def scan_and_add_folder(req: ScanRequest):
             priority=5,
         )
     return {"new": result.new, "skipped": result.skipped, "errors": result.errors,
-            "error_paths": result.error_paths, "queued": queued}
+            "error_paths": result.error_paths, "queued": queued,
+            "unreadable_dirs": result.unreadable_dirs,
+            "unreadable_paths": result.unreadable_paths}
 
 
 @router.post("/rescan")
@@ -102,7 +104,9 @@ def rescan_folder(req: FolderDeleteRequest):
                                          priority=5)
 
     return {"new": result.new, "skipped": result.skipped, "errors": result.errors,
-            "error_paths": result.error_paths, "queued": queued}
+            "error_paths": result.error_paths, "queued": queued,
+            "unreadable_dirs": result.unreadable_dirs,
+            "unreadable_paths": result.unreadable_paths}
 
 
 @router.put("/meta")

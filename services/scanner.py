@@ -38,6 +38,10 @@ class ScanResult:
     errors: int = 0
     new_photo_ids: list[int] = field(default_factory=list)
     error_paths: list[str] = field(default_factory=list)
+    # Directory che non si sono potute nemmeno elencare: tipicamente un mount
+    # di rete caduto a meta' scansione.
+    unreadable_dirs: int = 0
+    unreadable_paths: list[str] = field(default_factory=list)
 
 
 def scan_folder(folder_path: str, db_path: Optional[str] = None) -> ScanResult:
@@ -67,7 +71,20 @@ def scan_folder(folder_path: str, db_path: Optional[str] = None) -> ScanResult:
         for row in _rows
     }
 
-    for dirpath, _, filenames in os.walk(folder_path, followlinks=True):
+    def _directory_illeggibile(exc: OSError) -> None:
+        """
+        os.walk, senza questo, scarta gli errori di lettura di una directory
+        SENZA DIRE NULLA: la scansione si chiude dichiarando successo e le foto
+        di quella cartella semplicemente non ci sono. E' costato 27 foto in una
+        notte in cui il mount della NAS e' caduto a intermittenza.
+        """
+        percorso = getattr(exc, "filename", None) or str(exc)
+        logger.warning("Directory non leggibile, saltata: %s (%s)", percorso, exc)
+        result.unreadable_dirs += 1
+        result.unreadable_paths.append(percorso)
+
+    for dirpath, _, filenames in os.walk(folder_path, followlinks=True,
+                                         onerror=_directory_illeggibile):
         for fname in filenames:
             ext = os.path.splitext(fname)[1].lower()
             if ext not in SUPPORTED_EXTS or ext in config.EXCLUDED_EXTS:

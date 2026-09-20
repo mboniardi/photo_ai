@@ -138,3 +138,52 @@ class TestScanFolder:
         # User flag must survive re-index
         photo = get_photo_by_id(tmp_db, result2.new_photo_ids[0])
         assert photo["is_favorite"] == 1
+
+
+class TestDirectoryIlleggibili:
+    """Una notte di blackout della NAS ha fatto sparire 27 foto senza lasciare
+    traccia: os.walk, di default, scarta in silenzio le directory che non
+    riesce a leggere. La scansione dichiarava successo con errors = 0."""
+
+    def _cartella(self, tmp_path):
+        from PIL import Image
+        base = tmp_path / "lib"; base.mkdir()
+        Image.new("RGB", (40, 30)).save(str(base / "buona.jpg"), "JPEG")
+        sotto = base / "inaccessibile"; sotto.mkdir()
+        Image.new("RGB", (40, 30)).save(str(sotto / "persa.jpg"), "JPEG")
+        return base, sotto
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="da root i permessi non fermano nessuno")
+    def test_una_directory_illeggibile_viene_contata_e_non_passa_inosservata(self, tmp_db, tmp_path):
+        from services.scanner import scan_folder
+        base, sotto = self._cartella(tmp_path)
+        os.chmod(sotto, 0o000)
+        try:
+            r = scan_folder(str(base), db_path=tmp_db)
+        finally:
+            os.chmod(sotto, 0o755)
+
+        assert r.new == 1, "la foto leggibile deve essere comunque indicizzata"
+        assert r.unreadable_dirs == 1, "la directory illeggibile deve essere contata"
+        assert any("inaccessibile" in p for p in r.unreadable_paths)
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="da root i permessi non fermano nessuno")
+    def test_la_scansione_non_si_interrompe(self, tmp_db, tmp_path):
+        """Il resto della libreria deve essere indicizzato lo stesso."""
+        from PIL import Image
+        from services.scanner import scan_folder
+        base, sotto = self._cartella(tmp_path)
+        altra = base / "altra"; altra.mkdir()
+        Image.new("RGB", (40, 30)).save(str(altra / "seconda.jpg"), "JPEG")
+        os.chmod(sotto, 0o000)
+        try:
+            r = scan_folder(str(base), db_path=tmp_db)
+        finally:
+            os.chmod(sotto, 0o755)
+        assert r.new == 2 and r.unreadable_dirs == 1
+
+    def test_una_scansione_pulita_non_segnala_nulla(self, tmp_db, tmp_path):
+        from services.scanner import scan_folder
+        base, _ = self._cartella(tmp_path)
+        r = scan_folder(str(base), db_path=tmp_db)
+        assert r.unreadable_dirs == 0 and r.unreadable_paths == []
