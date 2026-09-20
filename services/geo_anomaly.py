@@ -101,3 +101,41 @@ def rileva(
         proposta = affidabili[0] if affidabili else prima
         anomalie.append(Anomalia(foto=p, proposta=proposta, distanza_km=d))
     return anomalie
+
+
+@dataclass
+class Gruppo:
+    """Foto contigue con lo stesso errore: una sola decisione da prendere."""
+    foto: list[dict] = field(default_factory=list)
+    proposta: dict = field(default_factory=dict)
+    distanza_km: float = 0.0
+
+
+def raggruppa(
+    anomalie: Sequence[Anomalia],
+    *,
+    raggio_km: float = 25.0,
+    finestra_ore: float = 3.0,
+) -> list[Gruppo]:
+    """
+    Unisce le anomalie contigue nel tempo che stanno nello stesso posto
+    sbagliato e puntano allo stesso posto giusto.
+
+    Il criterio è la vicinanza delle coordinate, non l'uguaglianza del nome:
+    l'AI scrive lo stesso luogo ogni volta in modo diverso ("Tempio di
+    Hathor, Dendera" / "Tempio di Dendera"), e raggruppare per stringa
+    lascerebbe decine di casi identici da confermare uno per uno.
+    """
+    gruppi: list[Gruppo] = []
+    for a in sorted(anomalie, key=lambda x: x.foto["t"]):
+        corrente = gruppi[-1] if gruppi else None
+        if (corrente is not None
+                and _distanza(corrente.foto[-1], a.foto) <= raggio_km
+                and _distanza(corrente.proposta, a.proposta) <= raggio_km
+                and _ore(corrente.foto[-1], a.foto) <= finestra_ore):
+            corrente.foto.append(a.foto)
+            corrente.distanza_km = max(corrente.distanza_km, a.distanza_km)
+        else:
+            gruppi.append(Gruppo(foto=[a.foto], proposta=a.proposta,
+                                 distanza_km=a.distanza_km))
+    return gruppi

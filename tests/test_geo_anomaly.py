@@ -117,3 +117,48 @@ class TestRileva:
                 self._f(3, "10:10", 25.71, 32.65)]
         a = rileva(foto)
         assert [x.foto["id"] for x in a] == []
+
+
+from services.geo_anomaly import Gruppo, raggruppa
+
+
+class TestRaggruppa:
+    def _anom(self, pid, ora, lat=45.07, lon=7.68, plat=25.70, plon=32.64, nome="Torino"):
+        t = datetime.fromisoformat(f"2026-04-01T{ora}:00")
+        return Anomalia(
+            foto={"id": pid, "t": t, "latitude": lat, "longitude": lon,
+                  "location_name": nome, "location_source": "ai"},
+            proposta={"id": 900, "t": t, "latitude": plat, "longitude": plon,
+                      "location_name": "Luxor", "location_source": "takeout"},
+            distanza_km=2600.0)
+
+    def test_foto_vicine_nel_tempo_e_nello_spazio_sono_un_caso_solo(self):
+        g = raggruppa([self._anom(1, "10:00"), self._anom(2, "10:05"),
+                       self._anom(3, "10:09")])
+        assert len(g) == 1
+        assert [f["id"] for f in g[0].foto] == [1, 2, 3]
+
+    def test_nomi_diversi_non_spezzano_il_gruppo(self):
+        # l'AI scrive lo stesso posto ogni volta in modo diverso
+        g = raggruppa([self._anom(1, "10:00", nome="Tempio di Hathor, Dendera"),
+                       self._anom(2, "10:05", nome="Tempio di Dendera")])
+        assert len(g) == 1
+
+    def test_luoghi_lontani_restano_casi_distinti(self):
+        g = raggruppa([self._anom(1, "10:00", lat=45.07, lon=7.68),
+                       self._anom(2, "10:05", lat=59.90, lon=10.68)])
+        assert len(g) == 2
+
+    def test_uno_stacco_temporale_apre_un_nuovo_caso(self):
+        g = raggruppa([self._anom(1, "10:00"), self._anom(2, "17:00")],
+                      finestra_ore=3.0)
+        assert len(g) == 2
+
+    def test_la_distanza_del_gruppo_e_la_massima(self):
+        a1, a2 = self._anom(1, "10:00"), self._anom(2, "10:05")
+        a2.distanza_km = 3000.0
+        g = raggruppa([a1, a2])
+        assert g[0].distanza_km == 3000.0
+
+    def test_lista_vuota(self):
+        assert raggruppa([]) == []
