@@ -151,15 +151,31 @@ class QueueWorker:
                 analyzed_at=datetime.now().isoformat(timespec="seconds"),
             )
 
-            # Se l'AI ha riconosciuto un luogo e la foto non ne aveva uno
-            if analysis.location_name and not photo["location_name"]:
+            # La guardia è sulle COORDINATE, non sul nome: una posizione che
+            # viene da un GPS EXIF, da una scelta dell'utente o da una
+            # correzione manuale vale più di un'ipotesi dell'AI, ma queste
+            # posizioni affidabili quasi mai hanno un location_name
+            # valorizzato — una guardia sul nome non le protegge affatto.
+            if photo["latitude"] is None:
+                # Nessuna coordinata pregressa: l'AI può proporre tutto
+                # (nome, coordinate e origine) — comportamento invariato.
+                if analysis.location_name:
+                    update_photo(
+                        self._db_path,
+                        photo_id,
+                        location_name=analysis.location_name,
+                        latitude=analysis.latitude,
+                        longitude=analysis.longitude,
+                        location_source="ai",
+                    )
+            elif analysis.location_name and not photo["location_name"]:
+                # La foto ha già una posizione affidabile: l'AI non può
+                # spostarla né cambiarne l'origine, ma può solo completare
+                # il nome del luogo se manca.
                 update_photo(
                     self._db_path,
                     photo_id,
                     location_name=analysis.location_name,
-                    latitude=analysis.latitude,
-                    longitude=analysis.longitude,
-                    location_source="ai",
                 )
 
             update_queue_status(self._db_path, qid, "done")

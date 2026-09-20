@@ -29,6 +29,28 @@ def make_fake_engine() -> AIEngine:
     return FakeEngine()
 
 
+def make_fake_engine_with_location(location_name="Roma, Italia",
+                                    latitude=41.9, longitude=12.5) -> AIEngine:
+    """Engine mock che ritorna un luogo riconosciuto con coordinate."""
+    class FakeLocationEngine(AIEngine):
+        async def analyze(self, image_bytes, location_hint=""):
+            return PhotoAnalysis(
+                description="Foto di test con luogo",
+                technical_score=7.0,
+                aesthetic_score=8.0,
+                subject="oggetto test",
+                atmosphere="serena",
+                colors=["rosso", "blu"],
+                strengths="buona",
+                weaknesses=None,
+                ai_engine="fake",
+                location_name=location_name,
+                latitude=latitude,
+                longitude=longitude,
+            )
+    return FakeLocationEngine()
+
+
 class FakeEmbedder:
     """Embedder finto che registra i testi ricevuti."""
     def __init__(self, dimension=1024):
@@ -245,3 +267,156 @@ class TestQueueWorkerEmbedder:
         photo = get_photo_by_id(tmp_db, pid)
         assert photo["description"] == "Foto di test"
         assert json.loads(photo["embedding"]) == []
+
+
+class TestQueueWorkerLocationGuard:
+    """
+    La guardia che decide se l'AI può scrivere la posizione deve basarsi
+    sulle COORDINATE (photo["latitude"]), non sul nome del luogo: le
+    posizioni affidabili (GPS EXIF, scelta utente, correzione manuale)
+    quasi mai hanno un location_name valorizzato, quindi una guardia sul
+    nome non le protegge dall'essere sovrascritte da una semplice ipotesi
+    dell'AI.
+    """
+
+    async def test_corrected_position_without_name_is_not_overwritten(self, tmp_path, tmp_db):
+        """
+        Foto con location_source='corrected' e coordinate ma senza nome:
+        la rianalisi deve solo riempire location_name, senza toccare
+        latitude/longitude/location_source anche se l'AI propone un luogo
+        con coordinate diverse.
+        """
+        from services.queue_worker import QueueWorker
+        from database.photos import insert_photo, get_photo_by_id
+        from database.queue import add_to_queue
+
+        photo_path = make_jpeg_file(tmp_path)
+        pid = insert_photo(tmp_db,
+                           file_path=photo_path,
+                           folder_path=str(tmp_path),
+                           filename="test.jpg",
+                           format="jpg",
+                           file_size=100,
+                           width=100,
+                           height=100,
+                           latitude=25.70,
+                           longitude=32.64,
+                           location_name=None,
+                           location_source="corrected")
+        add_to_queue(tmp_db, photo_id=pid)
+
+        worker = QueueWorker(
+            engine=make_fake_engine_with_location(
+                location_name="Torino, Italia", latitude=45.08, longitude=7.77),
+            db_path=tmp_db, rpm_limit=None)
+        await worker.process_next()
+
+        photo = get_photo_by_id(tmp_db, pid)
+        assert photo["latitude"] == 25.70
+        assert photo["longitude"] == 32.64
+        assert photo["location_source"] == "corrected"
+        assert photo["location_name"] == "Torino, Italia"
+
+    async def test_photo_without_coordinates_gets_ai_location(self, tmp_path, tmp_db):
+        """
+        Foto senza coordinate e senza nome: l'AI può scrivere tutto
+        (nome, coordinate, location_source='ai') — comportamento invariato.
+        """
+        from services.queue_worker import QueueWorker
+        from database.photos import insert_photo, get_photo_by_id
+        from database.queue import add_to_queue
+
+        photo_path = make_jpeg_file(tmp_path)
+        pid = insert_photo(tmp_db,
+                           file_path=photo_path,
+                           folder_path=str(tmp_path),
+                           filename="test.jpg",
+                           format="jpg",
+                           file_size=100,
+                           width=100,
+                           height=100)
+        add_to_queue(tmp_db, photo_id=pid)
+
+        worker = QueueWorker(
+            engine=make_fake_engine_with_location(
+                location_name="Roma, Italia", latitude=41.9, longitude=12.5),
+            db_path=tmp_db, rpm_limit=None)
+        await worker.process_next()
+
+        photo = get_photo_by_id(tmp_db, pid)
+        assert photo["location_name"] == "Roma, Italia"
+        assert photo["latitude"] == 41.9
+        assert photo["longitude"] == 12.5
+        assert photo["location_source"] == "ai"
+
+    async def test_photo_with_coordinates_and_name_is_untouched(self, tmp_path, tmp_db):
+        """
+        Foto con coordinate e nome già presenti: la posizione non deve
+        essere toccata in alcun campo.
+        """
+        from services.queue_worker import QueueWorker
+        from database.photos import insert_photo, get_photo_by_id
+        from database.queue import add_to_queue
+
+        photo_path = make_jpeg_file(tmp_path)
+        pid = insert_photo(tmp_db,
+                           file_path=photo_path,
+                           folder_path=str(tmp_path),
+                           filename="test.jpg",
+                           format="jpg",
+                           file_size=100,
+                           width=100,
+                           height=100,
+                           latitude=45.08,
+                           longitude=7.77,
+                           location_name="Torino, Italia",
+                           location_source="corrected")
+        add_to_queue(tmp_db, photo_id=pid)
+
+        worker = QueueWorker(
+            engine=make_fake_engine_with_location(
+                location_name="Roma, Italia", latitude=41.9, longitude=12.5),
+            db_path=tmp_db, rpm_limit=None)
+        await worker.process_next()
+
+        photo = get_photo_by_id(tmp_db, pid)
+        assert photo["location_name"] == "Torino, Italia"
+        assert photo["latitude"] == 45.08
+        assert photo["longitude"] == 7.77
+        assert photo["location_source"] == "corrected"
+
+    async def test_exif_coordinates_survive_reanalysis(self, tmp_path, tmp_db):
+        """
+        Difetto preesistente identico: foto con GPS EXIF vero (location_source
+        'exif') e senza nome non deve essere spostata dall'ipotesi dell'AI.
+        """
+        from services.queue_worker import QueueWorker
+        from database.photos import insert_photo, get_photo_by_id
+        from database.queue import add_to_queue
+
+        photo_path = make_jpeg_file(tmp_path)
+        pid = insert_photo(tmp_db,
+                           file_path=photo_path,
+                           folder_path=str(tmp_path),
+                           filename="test.jpg",
+                           format="jpg",
+                           file_size=100,
+                           width=100,
+                           height=100,
+                           latitude=48.85,
+                           longitude=2.35,
+                           location_name=None,
+                           location_source="exif")
+        add_to_queue(tmp_db, photo_id=pid)
+
+        worker = QueueWorker(
+            engine=make_fake_engine_with_location(
+                location_name="Roma, Italia", latitude=41.9, longitude=12.5),
+            db_path=tmp_db, rpm_limit=None)
+        await worker.process_next()
+
+        photo = get_photo_by_id(tmp_db, pid)
+        assert photo["latitude"] == 48.85
+        assert photo["longitude"] == 2.35
+        assert photo["location_source"] == "exif"
+        assert photo["location_name"] == "Roma, Italia"

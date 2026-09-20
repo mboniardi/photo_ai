@@ -171,6 +171,25 @@
     .queue-lib-num.zero { color: var(--green); }
     .queue-lib-total { color: var(--muted); border-top: 1px solid var(--border);
                        margin-top: 4px; padding-top: 4px; }
+    .geo-view { padding: 24px; overflow-y: auto; height: 100%; }
+    .geo-intro { color: var(--muted); font-size: 13px; margin-bottom: 20px; max-width: 680px; line-height: 1.6; }
+    .geo-caso { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+    .geo-caso-head { display: flex; align-items: center; gap: 14px; padding: 12px 16px; cursor: pointer; }
+    .geo-caso-head:hover { background: var(--hover); }
+    .geo-dist { font-family: 'DM Mono', monospace; color: var(--red); font-weight: 600; min-width: 92px; }
+    .geo-loc { flex: 1; font-size: 13px; }
+    .geo-loc-ora { color: var(--red); }
+    .geo-loc-prop { color: var(--green); }
+    .geo-quando { color: var(--muted); font-size: 12px; font-family: 'DM Mono', monospace; }
+    .geo-body { padding: 0 16px 16px; }
+    .geo-map { height: 260px; border-radius: 6px; margin-bottom: 12px; }
+    .geo-thumbs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .geo-thumbs img { width: 84px; height: 84px; object-fit: cover; border-radius: 4px; }
+    .geo-azioni { display: flex; gap: 10px; }
+    .geo-btn { padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border);
+               background: transparent; color: var(--fg); cursor: pointer; font-size: 13px; }
+    .geo-btn.primary { border-color: var(--green); color: var(--green); }
+    .geo-btn:hover { background: var(--hover); }
     .queue-current { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 8px; font-family: 'DM Mono', monospace; }
     .queue-buttons { display: flex; gap: 6px; }
     .queue-btn {
@@ -575,6 +594,15 @@
           <span>🗺</span>
           <span class="sidebar-item-name">Map</span>
         </div>
+        <div
+          class="sidebar-item"
+          :class="{ active: currentView === 'geocheck' }"
+          @click="switchToGeoCheck"
+        >
+          <span>🧭</span>
+          <span class="sidebar-item-name">Check location</span>
+          <span v-if="geoCasi.length" class="sidebar-badge">{{ geoCasi.length }}</span>
+        </div>
       </div>
 
       <div class="sidebar-section">
@@ -800,6 +828,48 @@
           </template>
           <div v-else class="map-photo-empty">
             Clicca un punto sulla mappa per vedere la foto
+          </div>
+        </div>
+      </div>
+
+      <div v-if="currentView === 'geocheck'" class="geo-view">
+        <div class="geo-intro">
+          Foto la cui posizione non torna con quella scattata subito prima e subito dopo.
+          La proposta viene dalle foto vicine: quando anche quelle sono sbagliate, lo è pure
+          la proposta — guarda la mappa prima di accettare.
+          <div v-if="geoStats.esaminate" style="margin-top:6px">
+            {{ geoStats.segnalate }} foto segnalate su {{ geoStats.esaminate }} esaminate,
+            in {{ geoCasi.length }} casi.
+          </div>
+        </div>
+
+        <div v-if="geoAvviso" class="geo-intro" style="color:var(--amber)">{{ geoAvviso }}</div>
+
+        <div v-if="geoLoading" class="geo-intro">Analisi in corso…</div>
+        <div v-else-if="!geoCasi.length" class="geo-intro">Nessuna anomalia trovata.</div>
+
+        <div v-for="caso in geoCasi" :key="caso.id" class="geo-caso">
+          <div class="geo-caso-head" @click="toggleCaso(caso)">
+            <span class="geo-dist">{{ Math.round(caso.distanza_km).toLocaleString('it-IT') }} km</span>
+            <span class="geo-loc">
+              <span class="geo-loc-ora">{{ caso.attuale.location_name || 'senza nome' }}</span>
+              →
+              <span class="geo-loc-prop">{{ caso.proposta.location_name || 'senza nome' }}</span>
+            </span>
+            <span class="geo-quando">{{ caso.n_foto }} foto · {{ caso.quando.slice(0,16).replace('T',' ') }}</span>
+          </div>
+          <div v-if="caso.aperto" class="geo-body">
+            <div :id="'geomap-' + caso.id" class="geo-map"></div>
+            <div class="geo-thumbs">
+              <img v-for="pid in caso.photo_ids.slice(0, 12)" :key="pid"
+                   :src="`/api/photos/${pid}/thumbnail?size=160`" loading="lazy">
+            </div>
+            <div class="geo-azioni">
+              <button class="geo-btn primary" @click="accettaCaso(caso)">
+                ✓ Accetta «{{ caso.proposta.location_name || 'la posizione proposta' }}»
+              </button>
+              <button class="geo-btn" @click="ignoraCaso(caso)">Ignora</button>
+            </div>
           </div>
         </div>
       </div>
@@ -2134,6 +2204,84 @@ createApp({
       }
     }
 
+    /* CHECK LOCATION */
+    const geoCasi = ref([]);
+    const geoStats = ref({ esaminate: 0, segnalate: 0 });
+    const geoLoading = ref(false);
+    const geoAvviso = ref('');
+    const _geoMappe = {};
+
+    async function switchToGeoCheck() {
+      currentView.value = 'geocheck';
+      if (!geoCasi.value.length) await loadGeoCheck();
+    }
+
+    async function loadGeoCheck() {
+      geoLoading.value = true;
+      try {
+        const d = await apiGet('/api/geo-check');
+        if (d) {
+          geoStats.value = { esaminate: d.esaminate, segnalate: d.segnalate };
+          geoCasi.value = d.casi.map(c => ({ ...c, aperto: false }));
+        }
+      } finally {
+        geoLoading.value = false;
+      }
+    }
+
+    function _smaltisciGeoMappa(id) {
+      if (_geoMappe[id]) { _geoMappe[id].remove(); delete _geoMappe[id]; }
+    }
+
+    function toggleCaso(caso) {
+      caso.aperto = !caso.aperto;
+      if (!caso.aperto) { _smaltisciGeoMappa(caso.id); return; }
+      // La mappa si crea solo all'apertura: quarantasette mappe insieme
+      // sarebbero tutte sprecate tranne quella che stai guardando.
+      nextTick(() => {
+        // Il div #geomap-N viene distrutto da v-if quando il caso si chiude,
+        // quindi la mappa di un'apertura precedente non si può riusare: va
+        // smaltita e ricreata da zero sul nuovo div (come fa switchToMap).
+        _smaltisciGeoMappa(caso.id);
+        const m = L.map('geomap-' + caso.id);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          maxZoom: 18,
+        }).addTo(m);
+        const ora  = [caso.attuale.latitude, caso.attuale.longitude];
+        const prop = [caso.proposta.latitude, caso.proposta.longitude];
+        L.circleMarker(ora,  { radius: 9, color: '#e5484d', fillOpacity: 0.85 })
+          .addTo(m).bindPopup('Dove sta ora: ' + (caso.attuale.location_name || '—'));
+        L.circleMarker(prop, { radius: 9, color: '#30a46c', fillOpacity: 0.85 })
+          .addTo(m).bindPopup('Proposta: ' + (caso.proposta.location_name || '—'));
+        L.polyline([ora, prop], { color: '#888', dashArray: '4 6', weight: 1 }).addTo(m);
+        m.fitBounds(L.latLngBounds([ora, prop]).pad(0.35));
+        _geoMappe[caso.id] = m;
+      });
+    }
+
+    async function accettaCaso(caso) {
+      const r = await apiPost('/api/geo-check/accept', {
+        photo_ids: caso.photo_ids,
+        latitude: caso.proposta.latitude,
+        longitude: caso.proposta.longitude,
+        location_name: caso.proposta.location_name,
+      });
+      if (r && r.ok) {
+        _smaltisciGeoMappa(caso.id);
+        geoCasi.value = geoCasi.value.filter(c => c.id !== caso.id);
+        geoAvviso.value = (r.mancanti && r.mancanti.length)
+          ? `${r.mancanti.length} foto del caso non sono state aggiornate: non esistono più (probabilmente cestinate).`
+          : '';
+        fetchQueueStatus();
+      }
+    }
+
+    function ignoraCaso(caso) {
+      _smaltisciGeoMappa(caso.id);
+      geoCasi.value = geoCasi.value.filter(c => c.id !== caso.id);
+    }
+
     /* INIT */
     /* MAP VIEW */
     const currentView = ref('grid');
@@ -2233,6 +2381,8 @@ createApp({
       formatBytes, formatDate, descSnippet,
       showAddFolder, addFolderLoading, addFolderForm, openAddFolder, submitAddFolder,
       currentView, mapSelectedPhoto, switchToMap, switchToGrid, openMapPhoto,
+      geoCasi, geoStats, geoLoading, geoAvviso, switchToGeoCheck, loadGeoCheck,
+      toggleCaso, accettaCaso, ignoraCaso,
       browserRoot, browserCurrentPath, browserDirs, browserLoading, browserError, browserBreadcrumbs, browseTo, selectBrowserPath,
       showSettingsModal, savingSettings, testingAi, testResult, settingsForm,
       purgingTrash, purgeResult, purgeTrash,

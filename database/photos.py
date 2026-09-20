@@ -252,3 +252,45 @@ def count_library_status(db_path: Optional[str] = None,
         row = conn.execute(sql, (embedding_dim, embedding_dim)).fetchone()
 
     return {k: int(row[k] or 0) for k in ("total", "to_analyze", "to_embed", "complete")}
+
+
+def get_photos_for_geo_check(db_path: Optional[str] = None) -> list:
+    """
+    Le foto georeferenziate, in ordine di scatto: il materiale del controllo
+    di coerenza geografica. Legge solo le colonne che servono.
+    """
+    with get_db(db_path) as conn:
+        return conn.execute(
+            """
+            SELECT id, filename, exif_date, latitude, longitude,
+                   location_name, location_source
+            FROM photos
+            WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+              AND exif_date IS NOT NULL
+              AND (is_trash = 0 OR is_trash IS NULL)
+            ORDER BY exif_date, id
+            """
+        ).fetchall()
+
+
+def clear_analysis(db_path: Optional[str], photo_id: int) -> None:
+    """
+    Cancella l'analisi costruita sulla posizione sbagliata.
+
+    L'embedding va via insieme alla descrizione: era calcolato su quel testo,
+    e lasciarlo significherebbe continuare a trovare la foto cercando il posto
+    sbagliato. Posizione e dati inseriti dall'utente non si toccano.
+    """
+    with get_db(db_path) as conn:
+        conn.execute(
+            """
+            UPDATE photos SET
+                description = NULL, subject = NULL, atmosphere = NULL,
+                colors = NULL, strengths = NULL, weaknesses = NULL,
+                technical_score = NULL, aesthetic_score = NULL,
+                overall_score = NULL, embedding = NULL, analyzed_at = NULL,
+                updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (photo_id,),
+        )
