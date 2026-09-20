@@ -101,3 +101,74 @@ class TestDeleteFolder:
                          json={"folder_path": photo_dir})
         assert resp.status_code == 200
         assert c.get("/api/folders").json() == []
+
+
+def _segna_analizzata(db, file_path):
+    from database.photos import get_photo_id_by_path, update_photo
+    pid = get_photo_id_by_path(db, file_path)
+    update_photo(db, pid, analyzed_at="2026-01-01T00:00:00", description="gia' descritta")
+    return pid
+
+
+class TestAutoAnalyzeNonRifaIlGiaFatto:
+    """L'analisi AI si paga: aggiungere una cartella non deve rianalizzare
+    le foto che hanno gia' una descrizione."""
+
+    def test_scan_accoda_solo_le_non_analizzate(self, client, tmp_path):
+        import config
+        c, tmp = client
+        d = make_photo_dir(tmp)
+        c.post("/api/folders/scan", json={"folder_path": d})       # senza auto_analyze
+        _segna_analizzata(config.LOCAL_DB, os.path.join(d, "a.jpg"))
+        r = c.post("/api/folders/scan", json={"folder_path": d, "auto_analyze": 1})
+        assert r.json()["queued"] == 1                              # solo b.jpg
+        assert c.get("/api/queue/status").json()["pending"] == 1
+
+    def test_scan_senza_auto_analyze_non_accoda_nulla(self, client, tmp_path):
+        c, tmp = client
+        d = make_photo_dir(tmp)
+        r = c.post("/api/folders/scan", json={"folder_path": d, "auto_analyze": 0})
+        assert r.json()["queued"] == 0
+        assert c.get("/api/queue/status").json()["pending"] == 0
+
+
+class TestRescanRispettaAutoAnalyze:
+    """L'etichetta dice 'Auto-analyze new photos': finora il flag veniva letto
+    solo in aggiunta, mai piu' dopo, quindi le foto nuove non partivano."""
+
+    def test_rescan_accoda_le_foto_nuove_se_la_cartella_e_marcata(self, client, tmp_path):
+        from PIL import Image
+        import config
+        c, tmp = client
+        d = make_photo_dir(tmp)
+        c.post("/api/folders/scan", json={"folder_path": d, "auto_analyze": 1})
+        c.delete("/api/queue/clear")
+        _segna_analizzata(config.LOCAL_DB, os.path.join(d, "a.jpg"))
+        _segna_analizzata(config.LOCAL_DB, os.path.join(d, "b.jpg"))
+
+        Image.new("RGB", (60, 40)).save(os.path.join(d, "nuova.jpg"), "JPEG")
+        r = c.post("/api/folders/rescan", json={"folder_path": d})
+        assert r.json()["queued"] == 1
+        assert c.get("/api/queue/status").json()["pending"] == 1
+
+    def test_rescan_non_accoda_se_la_cartella_non_e_marcata(self, client, tmp_path):
+        from PIL import Image
+        c, tmp = client
+        d = make_photo_dir(tmp)
+        c.post("/api/folders/scan", json={"folder_path": d, "auto_analyze": 0})
+        Image.new("RGB", (60, 40)).save(os.path.join(d, "nuova.jpg"), "JPEG")
+        r = c.post("/api/folders/rescan", json={"folder_path": d})
+        assert r.json()["queued"] == 0
+        assert c.get("/api/queue/status").json()["pending"] == 0
+
+    def test_rescan_non_ripesca_il_pregresso_mai_analizzato(self, client, tmp_path):
+        """Il flag promette le foto NUOVE. Una cartella lasciata apposta senza
+        analisi non deve mettersi a spendere solo perche' la si rescansiona."""
+        from PIL import Image
+        c, tmp = client
+        d = make_photo_dir(tmp)
+        c.post("/api/folders/scan", json={"folder_path": d, "auto_analyze": 1})
+        c.delete("/api/queue/clear")          # a.jpg e b.jpg restano non analizzate
+        Image.new("RGB", (60, 40)).save(os.path.join(d, "nuova.jpg"), "JPEG")
+        r = c.post("/api/folders/rescan", json={"folder_path": d})
+        assert r.json()["queued"] == 1        # solo nuova.jpg, non a.jpg e b.jpg

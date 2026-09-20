@@ -8,8 +8,8 @@ from database.folders import (
     get_all_folders, insert_folder, get_folder_by_path,
     update_folder, update_folder_counts, delete_folder,
 )
-from database.photos import count_photos, get_photos
-from database.queue import add_to_queue
+from database.photos import count_photos, get_photos, get_unanalyzed_photo_ids
+from database.queue import add_unanalyzed_to_queue
 from services.scanner import scan_folder
 import config
 
@@ -67,11 +67,12 @@ def scan_and_add_folder(req: ScanRequest):
                          photo_count=total, analyzed_count=analyzed)
     queued = 0
     if req.auto_analyze:
-        unanalyzed = get_photos(config.LOCAL_DB, folder_path=req.folder_path,
-                                analyzed_only=False, limit=10000)
-        for photo in unanalyzed:
-            add_to_queue(config.LOCAL_DB, photo_id=photo["id"], priority=5)
-        queued = len(unanalyzed)
+        queued = add_unanalyzed_to_queue(
+            config.LOCAL_DB,
+            photo_ids=get_unanalyzed_photo_ids(config.LOCAL_DB,
+                                               folder_path=req.folder_path),
+            priority=5,
+        )
     return {"new": result.new, "skipped": result.skipped, "errors": result.errors,
             "error_paths": result.error_paths, "queued": queued}
 
@@ -87,8 +88,21 @@ def rescan_folder(req: FolderDeleteRequest):
                             analyzed_only=True, is_trash=False)
     update_folder_counts(config.LOCAL_DB, req.folder_path,
                          photo_count=total, analyzed_count=analyzed)
+
+    # Il flag "Auto-analyze new photos" va onorato anche qui, non solo in
+    # aggiunta: altrimenti le foto che compaiono dopo non partono mai, che e'
+    # esattamente cio' che l'etichetta promette. Si accodano SOLO le nuove
+    # trovate adesso — una cartella lasciata apposta senza analisi non deve
+    # mettersi a spendere solo perche' la si rescansiona.
+    queued = 0
+    cartella = get_folder_by_path(config.LOCAL_DB, req.folder_path)
+    if cartella and cartella["auto_analyze"]:
+        queued = add_unanalyzed_to_queue(config.LOCAL_DB,
+                                         photo_ids=result.new_photo_ids,
+                                         priority=5)
+
     return {"new": result.new, "skipped": result.skipped, "errors": result.errors,
-            "error_paths": result.error_paths}
+            "error_paths": result.error_paths, "queued": queued}
 
 
 @router.put("/meta")
