@@ -646,11 +646,11 @@
             </div>
             <div class="queue-lib">
               <div class="queue-lib-row">
-                <span class="queue-lib-label">da analizzare (AI)</span>
+                <span class="queue-lib-label">senza descrizione</span>
                 <span class="queue-lib-num" :class="lib.to_analyze ? 'pending' : 'zero'">{{ fmtNum(lib.to_analyze) }}</span>
               </div>
               <div class="queue-lib-row">
-                <span class="queue-lib-label">da vettorizzare</span>
+                <span class="queue-lib-label">senza vettore</span>
                 <span class="queue-lib-num" :class="lib.to_embed ? 'pending' : 'zero'">{{ fmtNum(lib.to_embed) }}</span>
               </div>
               <div class="queue-lib-row queue-lib-total">
@@ -1950,9 +1950,24 @@ createApp({
     }
 
     /* FOLDERS MANAGEMENT */
+    // Riassume l'esito di una scansione. Le directory illeggibili vanno dette:
+    // un mount di rete che cade a meta' fa sparire foto in silenzio.
+    function _esitoScansione(r) {
+      const parts = [`${r.new} new photo${r.new !== 1 ? 's' : ''} found`];
+      if (r.queued > 0) parts.push(`${r.queued} queued for AI analysis`);
+      if (r.errors > 0) parts.push(`${r.errors} file unreadable`);
+      if (r.unreadable_dirs > 0)
+        parts.push(`⚠ ${r.unreadable_dirs} folder${r.unreadable_dirs !== 1 ? 's' : ''} could not be read — rescan when the NAS is back`);
+      return parts.join(' · ');
+    }
+
     async function rescanFolder(folder) {
-      await apiPost('/api/folders/rescan', { folder_path: folder.folder_path });
+      const r = await apiPost('/api/folders/rescan', { folder_path: folder.folder_path });
       await loadFolders();
+      if (r) {
+        showToast(_esitoScansione(r), r.unreadable_dirs > 0 ? 'error' : 'success');
+        fetchQueueStatus();
+      }
     }
 
     async function deleteFolder(folder) {
@@ -2006,7 +2021,10 @@ createApp({
     }
 
     function openAddFolder() {
-      Object.assign(addFolderForm, { folder_path: '', display_name: '', default_location_name: '', auto_analyze: false });
+      // auto_analyze acceso: aggiungere foto e non analizzarle e' l'eccezione,
+      // non la regola. Prima veniva spento qui, un istante prima di mostrare la
+      // finestra, quindi la casella si presentava sempre vuota.
+      Object.assign(addFolderForm, { folder_path: '', display_name: '', default_location_name: '', auto_analyze: true });
       showAddFolder.value = true;
       browseTo(browserRoot.value);
     }
@@ -2027,9 +2045,7 @@ createApp({
         await loadFolders();
         loadPhotos(true);
         fetchQueueStatus();
-        const parts = [`${result.new} new photo${result.new !== 1 ? 's' : ''} found`];
-        if (result.queued > 0) parts.push(`${result.queued} queued for AI analysis`);
-        showToast(parts.join(' · '), 'success');
+        showToast(_esitoScansione(result), result.unreadable_dirs > 0 ? 'error' : 'success');
       }
     }
 
