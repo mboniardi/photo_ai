@@ -1,7 +1,15 @@
 """Test per services/geo_anomaly.py — logica pura, nessun database."""
 from datetime import datetime
 
-from services.geo_anomaly import ORIGINI_AFFIDABILI, haversine_km, prepara
+from services.geo_anomaly import (
+    ORIGINI_AFFIDABILI,
+    Anomalia,
+    Gruppo,
+    haversine_km,
+    prepara,
+    raggruppa,
+    rileva,
+)
 
 
 class TestHaversine:
@@ -48,9 +56,6 @@ class TestPrepara:
     def test_le_origini_affidabili_includono_corrected(self):
         # una foto corretta a mano diventa ancora per le vicine
         assert set(ORIGINI_AFFIDABILI) == {"exif", "takeout", "manual", "corrected"}
-
-
-from services.geo_anomaly import Anomalia, rileva
 
 
 class TestRileva:
@@ -119,9 +124,6 @@ class TestRileva:
         assert [x.foto["id"] for x in a] == []
 
 
-from services.geo_anomaly import Gruppo, raggruppa
-
-
 class TestRaggruppa:
     def _anom(self, pid, ora, lat=45.07, lon=7.68, plat=25.70, plon=32.64, nome="Torino"):
         t = datetime.fromisoformat(f"2026-04-01T{ora}:00")
@@ -156,7 +158,7 @@ class TestRaggruppa:
 
     def test_la_distanza_del_gruppo_e_la_massima(self):
         a1, a2 = self._anom(1, "10:00"), self._anom(2, "10:05")
-        a2.distanza_km = 3000.0
+        a1.distanza_km = 3000.0
         g = raggruppa([a1, a2])
         assert g[0].distanza_km == 3000.0
 

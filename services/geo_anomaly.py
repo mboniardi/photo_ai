@@ -8,7 +8,7 @@ la configurazione né la rete, così si può provare senza infrastruttura.
 import math
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Iterable, Optional, Sequence
+from typing import Iterable, Sequence
 
 # Posizioni di cui ci si può fidare: vengono da un GPS o da una scelta
 # esplicita dell'utente, non da un'ipotesi del modello.
