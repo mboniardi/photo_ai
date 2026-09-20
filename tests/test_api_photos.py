@@ -194,3 +194,92 @@ class TestThumbnailConcurrencyLimit:
 
         assert not errori, errori
         assert picco <= 2, f"decodifiche simultanee: {picco}, atteso al massimo 2"
+
+
+def _altra_foto(db, tmp_path, nome, *, lat=None):
+    from database.photos import insert_photo, update_photo
+    pth = str(tmp_path / nome)
+    Image.new("RGB", (60, 40)).save(pth, "JPEG")
+    pid = insert_photo(db, file_path=pth, folder_path=str(tmp_path), filename=nome,
+                       format="jpg", file_size=100, width=60, height=40)
+    if lat is not None:
+        update_photo(db, pid, latitude=lat, longitude=1.0, location_source="exif")
+    return pid
+
+
+class TestBulkLocation:
+    """Assegnare la stessa posizione a un gruppo selezionato a mano, prima di
+    mandarlo all'AI."""
+
+    def _payload(self, ids, overwrite=False):
+        return {"photo_ids": ids, "latitude": 37.0, "longitude": -110.0,
+                "location_name": "Monument Valley", "overwrite": overwrite}
+
+    def test_assegna_e_riporta_i_conteggi(self, client_with_photo):
+        import config
+        c, pid, _ = client_with_photo
+        r = c.put("/api/photos/bulk-location", json=self._payload([pid]))
+        assert r.status_code == 200
+        assert r.json() == {"ok": True, "aggiornate": 1, "saltate": 0, "mancanti": []}
+        assert c.get(f"/api/photos/{pid}").json()["location_source"] == "manual"
+
+    def test_senza_overwrite_salta_chi_ha_gia_il_gps(self, client_with_photo, tmp_path):
+        import config
+        c, pid, _ = client_with_photo
+        con_gps = _altra_foto(config.LOCAL_DB, tmp_path, "gps.jpg", lat=45.0)
+        r = c.put("/api/photos/bulk-location", json=self._payload([pid, con_gps]))
+        assert r.json()["aggiornate"] == 1 and r.json()["saltate"] == 1
+        assert c.get(f"/api/photos/{con_gps}").json()["latitude"] == 45.0
+
+    def test_con_overwrite_scrive_anche_su_quelle(self, client_with_photo, tmp_path):
+        import config
+        c, pid, _ = client_with_photo
+        con_gps = _altra_foto(config.LOCAL_DB, tmp_path, "gps2.jpg", lat=45.0)
+        r = c.put("/api/photos/bulk-location",
+                  json=self._payload([pid, con_gps], overwrite=True))
+        assert r.json()["aggiornate"] == 2
+        assert c.get(f"/api/photos/{con_gps}").json()["latitude"] == 37.0
+
+    def test_rifiuta_coordinate_impossibili(self, client_with_photo):
+        c, pid, _ = client_with_photo
+        r = c.put("/api/photos/bulk-location",
+                  json={"photo_ids": [pid], "latitude": 99.0, "longitude": 0.0})
+        assert r.status_code == 422
+
+    def test_rifiuta_selezione_vuota(self, client_with_photo):
+        c, _, _ = client_with_photo
+        r = c.put("/api/photos/bulk-location",
+                  json={"photo_ids": [], "latitude": 37.0, "longitude": -110.0})
+        assert r.status_code == 422
+
+    def test_richiede_autenticazione(self, client_with_photo):
+        c, pid, _ = client_with_photo
+        anon = TestClient(c.app)
+        assert anon.put("/api/photos/bulk-location",
+                        json=self._payload([pid])).status_code == 401
+
+    def test_la_rotta_non_viene_scambiata_per_un_id(self, client_with_photo):
+        """/{photo_id} intercetterebbe 'bulk-location' e proverebbe a leggerlo
+        come numero: la rotta deve essere dichiarata prima."""
+        c, pid, _ = client_with_photo
+        assert c.put("/api/photos/bulk-location",
+                     json=self._payload([pid])).status_code == 200
+
+
+class TestPhotoIds:
+    def test_ritorna_gli_id_e_quelli_gia_posizionati(self, client_with_photo, tmp_path):
+        import config
+        c, pid, _ = client_with_photo
+        con_gps = _altra_foto(config.LOCAL_DB, tmp_path, "g3.jpg", lat=45.0)
+        d = c.get("/api/photos/ids").json()
+        assert sorted(d["ids"]) == sorted([pid, con_gps])
+        assert d["con_posizione"] == [con_gps]
+
+    def test_rispetta_i_filtri(self, client_with_photo, tmp_path):
+        c, pid, _ = client_with_photo
+        d = c.get("/api/photos/ids", params={"folder_path": "/inesistente"}).json()
+        assert d["ids"] == []
+
+    def test_richiede_autenticazione(self, client_with_photo):
+        c, _, _ = client_with_photo
+        assert TestClient(c.app).get("/api/photos/ids").status_code == 401

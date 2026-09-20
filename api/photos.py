@@ -3,10 +3,13 @@ import os
 import threading
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
-from database.photos import get_photos, get_photo_by_id, update_photo, count_photos, purge_trash
+from database.photos import (
+    get_photos, get_photo_by_id, update_photo, count_photos, purge_trash,
+    bulk_set_location, get_photo_ids_for_selection,
+)
 from services.image_processor import generate_thumbnail
 import config
 
@@ -26,6 +29,14 @@ class PhotoUpdateRequest(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     location_source: Optional[str] = None
+
+
+class BulkLocationRequest(BaseModel):
+    photo_ids: list[int] = Field(min_length=1)
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    location_name: Optional[str] = None
+    overwrite: bool = False
 
 
 @router.get("")
@@ -70,6 +81,58 @@ def get_map_photos():
                  AND (is_trash = 0 OR is_trash IS NULL)"""
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+@router.get("/ids")
+def photo_ids_for_selection(
+    folder_path: Optional[str] = None,
+    is_favorite: Optional[bool] = None,
+    is_trash: Optional[bool] = None,
+    analyzed_only: Optional[bool] = None,
+    min_score: Optional[float] = None,
+    format: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    location: Optional[str] = None,
+    orientation: Optional[str] = None,
+):
+    """
+    Gli id di tutto cio' che corrisponde ai filtri, per "seleziona tutte".
+
+    La griglia ne carica cento per volta: senza questa rotta, per selezionarne
+    settecento bisognerebbe scorrere sette volte.
+    """
+    return get_photo_ids_for_selection(
+        config.LOCAL_DB,
+        folder_path=folder_path, is_favorite=is_favorite, is_trash=is_trash,
+        analyzed_only=analyzed_only, min_score=min_score, format=format,
+        date_from=date_from, date_to=date_to, location=location,
+        orientation=orientation,
+    )
+
+
+@router.put("/bulk-location")
+def set_location_in_bulk(req: BulkLocationRequest):
+    """
+    Assegna la stessa posizione a un gruppo di foto, in una sola transazione.
+
+    Serve prima dell'analisi: senza coordinate il modello indovina il luogo, e
+    le descrizioni costruite su un luogo sbagliato sono tutte da rifare — a
+    pagamento. La posizione scritta qui diventa il contesto che il worker passa
+    al modello.
+
+    Dichiarata prima di /{photo_id}: altrimenti "bulk-location" verrebbe letto
+    come un identificativo.
+    """
+    esito = bulk_set_location(
+        config.LOCAL_DB,
+        photo_ids=req.photo_ids,
+        latitude=req.latitude,
+        longitude=req.longitude,
+        location_name=req.location_name,
+        overwrite=req.overwrite,
+    )
+    return {"ok": True, **esito}
 
 
 @router.get("/{photo_id}")
