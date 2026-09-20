@@ -747,6 +747,14 @@
               <input type="text" class="filter-input" v-model="filters.location" placeholder="City, country…" @change="loadPhotos(true)" />
             </div>
             <div class="filter-group">
+              <label class="filter-label">Coordinate</label>
+              <select class="filter-select" v-model="filters.has_location" @change="loadPhotos(true)">
+                <option value="">Tutte</option>
+                <option value="false">Senza coordinate</option>
+                <option value="true">Con coordinate</option>
+              </select>
+            </div>
+            <div class="filter-group">
               <label class="filter-label">Min score: {{ filters.min_score }}</label>
               <input type="range" min="1" max="10" step="0.5" class="filter-slider" v-model.number="filters.min_score" @change="loadPhotos(true)" />
             </div>
@@ -1518,6 +1526,12 @@ createApp({
       p.set('is_trash', filters.only_trash ? 'true' : 'false');
       if (filters.analyzed !== '')  p.set('analyzed', filters.analyzed);
       if (filters.formats.length)   p.set('format', filters.formats.join(','));
+      // Questi quattro erano raccolti dal pannello e mai inviati.
+      if (filters.date_from)        p.set('date_from', filters.date_from);
+      if (filters.date_to)          p.set('date_to', filters.date_to);
+      if (filters.location)         p.set('location', filters.location);
+      if (filters.orientation)      p.set('orientation', filters.orientation);
+      if (filters.has_location !== '') p.set('has_location', filters.has_location);
       return p;
     }
 
@@ -1618,6 +1632,7 @@ createApp({
       min_score: 1,
       analyzed: '',
       orientation: '',
+      has_location: '',
       formats: [],
       only_favorites: false,
       only_trash: false,
