@@ -45,3 +45,59 @@ def prepara(righe: Iterable[dict]) -> list[dict]:
         foto.append(d)
     foto.sort(key=lambda f: (f["t"], f["id"]))
     return foto
+
+
+@dataclass
+class Anomalia:
+    """Una foto sospetta, e la foto vicina da cui viene la posizione proposta."""
+    foto: dict
+    proposta: dict
+    distanza_km: float
+
+
+def _ore(a: dict, b: dict) -> float:
+    return abs((b["t"] - a["t"]).total_seconds()) / 3600.0
+
+
+def _distanza(a: dict, b: dict) -> float:
+    return haversine_km(a["latitude"], a["longitude"],
+                        b["latitude"], b["longitude"])
+
+
+def rileva(
+    foto: Sequence[dict],
+    *,
+    max_gap_ore: float = 2.0,
+    accordo_km: float = 50.0,
+    fuori_scala_km: float = 150.0,
+) -> list[Anomalia]:
+    """
+    Guarda la foto precedente e la successiva. Se sono vicine nel tempo, se
+    concordano fra loro sulla posizione, e quella in mezzo è fuori scala
+    rispetto a entrambe, la segnala.
+
+    Confrontare a coppie non basta: le coordinate scritte dall'AI sono
+    ipotesi, e un'ipotesi contro un'altra ipotesi non dimostra nulla. Serve
+    che prima e dopo siano d'accordo fra loro.
+    """
+    anomalie: list[Anomalia] = []
+    for i in range(1, len(foto) - 1):
+        p, prima, dopo = foto[i], foto[i - 1], foto[i + 1]
+
+        if (p.get("location_source") or "") in ORIGINI_AFFIDABILI:
+            continue                                  # ha un GPS vero
+        if _ore(prima, p) > max_gap_ore or _ore(p, dopo) > max_gap_ore:
+            continue                                  # troppo isolata nel tempo
+        if _distanza(prima, dopo) > accordo_km:
+            continue                                  # i vicini non concordano
+
+        d = min(_distanza(p, prima), _distanza(p, dopo))
+        if d <= fuori_scala_km:
+            continue
+
+        # Fra le due vicine, una posizione da GPS vale più di un'ipotesi.
+        affidabili = [v for v in (prima, dopo)
+                      if (v.get("location_source") or "") in ORIGINI_AFFIDABILI]
+        proposta = affidabili[0] if affidabili else prima
+        anomalie.append(Anomalia(foto=p, proposta=proposta, distanza_km=d))
+    return anomalie

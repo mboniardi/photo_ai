@@ -48,3 +48,72 @@ class TestPrepara:
     def test_le_origini_affidabili_includono_corrected(self):
         # una foto corretta a mano diventa ancora per le vicine
         assert set(ORIGINI_AFFIDABILI) == {"exif", "takeout", "manual", "corrected"}
+
+
+from services.geo_anomaly import Anomalia, rileva
+
+
+class TestRileva:
+    """Tre foto: due in Egitto e una, in mezzo, dall'altra parte del mondo."""
+
+    def _f(self, pid, ora, lat, lon, src="ai", nome="x"):
+        return {"id": pid, "filename": f"{pid}.jpg",
+                "exif_date": f"2026-04-01T{ora}:00", "latitude": lat,
+                "longitude": lon, "location_name": nome, "location_source": src,
+                "t": datetime.fromisoformat(f"2026-04-01T{ora}:00")}
+
+    def test_segnala_la_foto_fuori_scala(self):
+        foto = [self._f(1, "10:00", 25.70, 32.64),        # Luxor
+                self._f(2, "10:05", 45.07, 7.68),          # Torino
+                self._f(3, "10:10", 25.71, 32.65)]         # Luxor
+        a = rileva(foto)
+        assert len(a) == 1
+        assert a[0].foto["id"] == 2
+        assert a[0].distanza_km > 2000
+
+    def test_propone_la_precedente(self):
+        foto = [self._f(1, "10:00", 25.70, 32.64, nome="Luxor"),
+                self._f(2, "10:05", 45.07, 7.68),
+                self._f(3, "10:10", 25.71, 32.65, nome="Karnak")]
+        a = rileva(foto)
+        assert a[0].proposta["id"] == 1
+
+    def test_preferisce_il_gps_vero_alla_precedente(self):
+        # la successiva ha coordinate da Takeout: vale piu' di un'ipotesi
+        foto = [self._f(1, "10:00", 25.70, 32.64, src="ai"),
+                self._f(2, "10:05", 45.07, 7.68),
+                self._f(3, "10:10", 25.71, 32.65, src="takeout")]
+        a = rileva(foto)
+        assert a[0].proposta["id"] == 3
+
+    def test_non_segnala_se_prima_e_dopo_non_concordano(self):
+        # giornata di spostamento: nessuno puo' fare da riferimento
+        foto = [self._f(1, "10:00", 25.70, 32.64),
+                self._f(2, "10:05", 30.00, 31.20),
+                self._f(3, "10:10", 45.07, 7.68)]
+        assert rileva(foto) == []
+
+    def test_non_segnala_se_i_vicini_sono_lontani_nel_tempo(self):
+        foto = [self._f(1, "02:00", 25.70, 32.64),
+                self._f(2, "10:05", 45.07, 7.68),
+                self._f(3, "18:00", 25.71, 32.65)]
+        assert rileva(foto, max_gap_ore=2.0) == []
+
+    def test_non_discute_una_foto_con_gps_vero(self):
+        foto = [self._f(1, "10:00", 25.70, 32.64),
+                self._f(2, "10:05", 45.07, 7.68, src="takeout"),
+                self._f(3, "10:10", 25.71, 32.65)]
+        assert rileva(foto) == []
+
+    def test_uno_scarto_piccolo_non_e_anomalia(self):
+        foto = [self._f(1, "10:00", 25.70, 32.64),
+                self._f(2, "10:05", 25.90, 32.70),   # ~23 km
+                self._f(3, "10:10", 25.71, 32.65)]
+        assert rileva(foto) == []
+
+    def test_gli_estremi_non_hanno_due_vicini(self):
+        foto = [self._f(1, "10:00", 45.07, 7.68),
+                self._f(2, "10:05", 25.70, 32.64),
+                self._f(3, "10:10", 25.71, 32.65)]
+        a = rileva(foto)
+        assert [x.foto["id"] for x in a] == []
