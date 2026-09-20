@@ -69,33 +69,21 @@ def get_photo_by_id(db_path: Optional[str], photo_id: int):
         ).fetchone()
 
 
-def get_photos(
-    db_path: Optional[str] = None,
+def _filtri_foto(
     *,
-    folder_path: Optional[str] = None,
-    is_favorite: Optional[bool] = None,
-    is_trash: Optional[bool] = None,
-    analyzed_only: Optional[bool] = None,
-    min_score: Optional[float] = None,
-    format: Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    location: Optional[str] = None,
-    orientation: Optional[str] = None,
-    sort_by: str = "id",
-    sort_desc: bool = False,
-    limit: int = 100,
-    offset: int = 0,
-) -> list:
+    folder_path=None, is_favorite=None, is_trash=None, analyzed_only=None,
+    min_score=None, format=None, date_from=None, date_to=None,
+    location=None, orientation=None,
+) -> tuple[list, list]:
     """
-    Lista foto con filtri combinati (AND logico).
-    Ritorna lista di sqlite3.Row.
-    """
-    if sort_by not in _ALLOWED_SORT_COLUMNS:
-        sort_by = "id"
+    Traduce i filtri della griglia in condizioni SQL e parametri.
 
-    conditions = []
-    params = []
+    Estratta da get_photos perche' la usa anche la selezione di massa: i due
+    elenchi devono per forza corrispondere, altrimenti "seleziona tutte le N"
+    sceglierebbe foto diverse da quelle che stai guardando.
+    """
+    conditions: list = []
+    params: list = []
 
     if folder_path is not None:
         conditions.append("folder_path = ?")
@@ -107,7 +95,7 @@ def get_photos(
     if is_trash is True:
         conditions.append("is_trash = 1")
     elif is_trash is False:
-        conditions.append("is_trash = 0")
+        conditions.append("(is_trash = 0 OR is_trash IS NULL)")
     if analyzed_only is True:
         conditions.append("analyzed_at IS NOT NULL")
     if analyzed_only is False:
@@ -134,6 +122,40 @@ def get_photos(
     elif orientation == "square":
         conditions.append("width = height")
 
+    return conditions, params
+
+
+def get_photos(
+    db_path: Optional[str] = None,
+    *,
+    folder_path: Optional[str] = None,
+    is_favorite: Optional[bool] = None,
+    is_trash: Optional[bool] = None,
+    analyzed_only: Optional[bool] = None,
+    min_score: Optional[float] = None,
+    format: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    location: Optional[str] = None,
+    orientation: Optional[str] = None,
+    sort_by: str = "id",
+    sort_desc: bool = False,
+    limit: int = 100,
+    offset: int = 0,
+) -> list:
+    """
+    Lista foto con filtri combinati (AND logico).
+    Ritorna lista di sqlite3.Row.
+    """
+    if sort_by not in _ALLOWED_SORT_COLUMNS:
+        sort_by = "id"
+
+    conditions, params = _filtri_foto(
+        folder_path=folder_path, is_favorite=is_favorite, is_trash=is_trash,
+        analyzed_only=analyzed_only, min_score=min_score, format=format,
+        date_from=date_from, date_to=date_to, location=location,
+        orientation=orientation,
+    )
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     order = f"ORDER BY {sort_by} {'DESC' if sort_desc else 'ASC'}"
 
@@ -314,3 +336,75 @@ def get_unanalyzed_photo_ids(db_path: Optional[str] = None,
     sql.append("ORDER BY id")
     with get_db(db_path) as conn:
         return [r["id"] for r in conn.execute(" ".join(sql), params)]
+
+
+def get_photo_ids_for_selection(db_path: Optional[str] = None, **filtri) -> dict:
+    """
+    Gli id di tutte le foto che corrispondono ai filtri, senza limite di pagina,
+    piu' quelli che hanno gia' una posizione.
+
+    La griglia ne carica cento per volta: per selezionarne settecento dovresti
+    scorrere sette volte. Qui si prendono in un colpo solo, e si riportano
+    anche gli id gia' posizionati perche' l'interfaccia possa dire quante foto
+    verrebbero sovrascritte — esattamente, anche dopo che ne hai deselezionata
+    qualcuna a mano.
+    """
+    conditions, params = _filtri_foto(**filtri)
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    with get_db(db_path) as conn:
+        righe = conn.execute(
+            f"SELECT id, latitude FROM photos {where} ORDER BY id", params
+        ).fetchall()
+    return {
+        "ids": [r["id"] for r in righe],
+        "con_posizione": [r["id"] for r in righe if r["latitude"] is not None],
+    }
+
+
+def bulk_set_location(db_path: Optional[str] = None,
+                      *,
+                      photo_ids: list,
+                      latitude: float,
+                      longitude: float,
+                      location_name: Optional[str] = None,
+                      overwrite: bool = False) -> dict:
+    """
+    Assegna la stessa posizione a molte foto in una sola transazione.
+
+    Una PUT per foto, come fanno le altre azioni di massa, significherebbe
+    settecento richieste contemporanee contro un pool di quaranta thread.
+
+    Con `overwrite` falso le foto che hanno gia' una posizione restano intatte:
+    il GPS della fotocamera vale piu' di un punto scelto a mano per un gruppo.
+    """
+    if not photo_ids:
+        return {"aggiornate": 0, "saltate": 0, "mancanti": []}
+
+    segnaposto = ",".join("?" * len(photo_ids))
+    with get_db(db_path) as conn:
+        esistenti = {
+            r["id"]: r["latitude"] for r in conn.execute(
+                f"SELECT id, latitude FROM photos WHERE id IN ({segnaposto})",
+                list(photo_ids),
+            )
+        }
+        mancanti = [pid for pid in photo_ids if pid not in esistenti]
+        if overwrite:
+            da_scrivere = list(esistenti)
+        else:
+            da_scrivere = [pid for pid, lat in esistenti.items() if lat is None]
+
+        if da_scrivere:
+            conn.execute(
+                f"""UPDATE photos
+                    SET latitude = ?, longitude = ?, location_name = ?,
+                        location_source = 'manual', updated_at = datetime('now')
+                    WHERE id IN ({",".join("?" * len(da_scrivere))})""",
+                [latitude, longitude, location_name] + da_scrivere,
+            )
+
+    return {
+        "aggiornate": len(da_scrivere),
+        "saltate": len(esistenti) - len(da_scrivere),
+        "mancanti": mancanti,
+    }

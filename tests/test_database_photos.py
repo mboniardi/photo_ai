@@ -316,3 +316,124 @@ class TestUnanalyzedPhotoIds:
         from database.photos import get_unanalyzed_photo_ids
         attesi = [self._foto(tmp_db, "/a") for _ in range(120)]
         assert len(get_unanalyzed_photo_ids(tmp_db, folder_path="/a")) == len(attesi)
+
+
+class TestBulkSetLocation:
+    """Assegnare una posizione a centinaia di foto in un colpo solo, prima di
+    mandarle all'AI: senza coordinate il modello inventa il luogo e le
+    descrizioni sarebbero tutte da rifare."""
+
+    def _foto(self, db, *, lat=None, lon=None, src=None, descr=None, fav=0):
+        import uuid
+        from database.photos import insert_photo, update_photo
+        pid = insert_photo(db, file_path=f"/x/{uuid.uuid4()}.jpg", folder_path="/x",
+                           filename="a.jpg", format="jpg", file_size=1, width=4, height=3)
+        campi = {}
+        if lat is not None: campi.update(latitude=lat, longitude=lon, location_source=src)
+        if descr: campi["description"] = descr
+        if fav: campi["is_favorite"] = 1
+        if campi: update_photo(db, pid, **campi)
+        return pid
+
+    def _assegna(self, db, ids, overwrite=False):
+        from database.photos import bulk_set_location
+        return bulk_set_location(db, photo_ids=ids, latitude=37.0, longitude=-110.0,
+                                 location_name="Monument Valley", overwrite=overwrite)
+
+    def test_senza_overwrite_salta_chi_ha_gia_una_posizione(self, tmp_db):
+        from database.photos import get_photo_by_id
+        vuota = self._foto(tmp_db)
+        con_gps = self._foto(tmp_db, lat=36.0, lon=-111.0, src="exif")
+        r = self._assegna(tmp_db, [vuota, con_gps])
+        assert r["aggiornate"] == 1 and r["saltate"] == 1
+        assert get_photo_by_id(tmp_db, vuota)["latitude"] == 37.0
+        # il GPS della fotocamera non si tocca
+        p = get_photo_by_id(tmp_db, con_gps)
+        assert p["latitude"] == 36.0 and p["location_source"] == "exif"
+
+    def test_con_overwrite_scrive_su_tutte(self, tmp_db):
+        from database.photos import get_photo_by_id
+        vuota = self._foto(tmp_db)
+        con_gps = self._foto(tmp_db, lat=36.0, lon=-111.0, src="exif")
+        r = self._assegna(tmp_db, [vuota, con_gps], overwrite=True)
+        assert r["aggiornate"] == 2 and r["saltate"] == 0
+        p = get_photo_by_id(tmp_db, con_gps)
+        assert p["latitude"] == 37.0 and p["location_source"] == "manual"
+
+    def test_scrive_nome_e_origine_manual(self, tmp_db):
+        from database.photos import get_photo_by_id
+        pid = self._foto(tmp_db)
+        self._assegna(tmp_db, [pid])
+        p = get_photo_by_id(tmp_db, pid)
+        assert p["location_name"] == "Monument Valley"
+        assert p["location_source"] == "manual"
+        assert p["longitude"] == -110.0
+
+    def test_non_tocca_nient_altro(self, tmp_db):
+        from database.photos import get_photo_by_id
+        pid = self._foto(tmp_db, descr="descrizione mia", fav=1)
+        self._assegna(tmp_db, [pid])
+        p = get_photo_by_id(tmp_db, pid)
+        assert p["description"] == "descrizione mia" and p["is_favorite"] == 1
+        assert p["analyzed_at"] is None
+
+    def test_gli_id_inesistenti_finiscono_in_mancanti(self, tmp_db):
+        pid = self._foto(tmp_db)
+        r = self._assegna(tmp_db, [pid, 999999])
+        assert r["aggiornate"] == 1 and r["mancanti"] == [999999]
+
+    def test_lista_vuota(self, tmp_db):
+        r = self._assegna(tmp_db, [])
+        assert r == {"aggiornate": 0, "saltate": 0, "mancanti": []}
+
+    def test_centinaia_di_foto_in_una_sola_chiamata(self, tmp_db):
+        ids = [self._foto(tmp_db) for _ in range(250)]
+        r = self._assegna(tmp_db, ids)
+        assert r["aggiornate"] == 250
+
+
+class TestPhotoIdsForSelection:
+    """'Seleziona tutte le N' deve prendere tutto cio' che corrisponde ai
+    filtri, non le sole 100 gia' caricate nella griglia."""
+
+    def _foto(self, db, cartella, *, lat=None, trash=0):
+        import uuid
+        from database.photos import insert_photo, update_photo
+        pid = insert_photo(db, file_path=f"{cartella}/{uuid.uuid4()}.jpg", folder_path=cartella,
+                           filename="a.jpg", format="jpg", file_size=1, width=4, height=3)
+        campi = {}
+        if lat is not None: campi.update(latitude=lat, longitude=1.0)
+        if trash: campi["is_trash"] = 1
+        if campi: update_photo(db, pid, **campi)
+        return pid
+
+    def test_rispetta_il_filtro_cartella(self, tmp_db):
+        from database.photos import get_photo_ids_for_selection
+        a = self._foto(tmp_db, "/a"); self._foto(tmp_db, "/b")
+        r = get_photo_ids_for_selection(tmp_db, folder_path="/a")
+        assert r["ids"] == [a]
+
+    def test_indica_quali_hanno_gia_una_posizione(self, tmp_db):
+        from database.photos import get_photo_ids_for_selection
+        senza = self._foto(tmp_db, "/a")
+        con = self._foto(tmp_db, "/a", lat=45.0)
+        r = get_photo_ids_for_selection(tmp_db, folder_path="/a")
+        assert sorted(r["ids"]) == sorted([senza, con])
+        assert r["con_posizione"] == [con]
+
+    def test_nessun_limite_a_cento(self, tmp_db):
+        from database.photos import get_photo_ids_for_selection
+        for _ in range(230): self._foto(tmp_db, "/a")
+        assert len(get_photo_ids_for_selection(tmp_db, folder_path="/a")["ids"]) == 230
+
+    def test_rispetta_il_filtro_analizzate(self, tmp_db):
+        from database.photos import get_photo_ids_for_selection, update_photo
+        da_fare = self._foto(tmp_db, "/a")
+        fatta = self._foto(tmp_db, "/a")
+        update_photo(tmp_db, fatta, analyzed_at="2026-01-01T00:00:00")
+        assert get_photo_ids_for_selection(tmp_db, folder_path="/a", analyzed_only=False)["ids"] == [da_fare]
+
+    def test_esclude_il_cestino_se_richiesto(self, tmp_db):
+        from database.photos import get_photo_ids_for_selection
+        viva = self._foto(tmp_db, "/a"); self._foto(tmp_db, "/a", trash=1)
+        assert get_photo_ids_for_selection(tmp_db, folder_path="/a", is_trash=False)["ids"] == [viva]
