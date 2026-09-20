@@ -26,6 +26,7 @@ from api.search   import router as search_router
 from api.export   import router as export_router
 from api.browse   import router as browse_router
 from api.takeout  import router as takeout_router
+from api.geo_check import router as geo_check_router
 
 START_TIME = time.time()
 
@@ -49,6 +50,7 @@ app.include_router(search_router,   dependencies=[Depends(require_auth)])
 app.include_router(export_router,   dependencies=[Depends(require_auth)])
 app.include_router(browse_router,   dependencies=[Depends(require_auth)])
 app.include_router(takeout_router,  dependencies=[Depends(require_auth)])
+app.include_router(geo_check_router, dependencies=[Depends(require_auth)])
 
 
 # ── Health ────────────────────────────────────────────────────────
