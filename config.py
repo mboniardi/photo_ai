@@ -133,3 +133,26 @@ GEO_ACCORDO_KM: float = float(os.environ.get("GEO_ACCORDO_KM", "50"))
 GEO_FUORI_SCALA_KM: float = float(os.environ.get("GEO_FUORI_SCALA_KM", "150"))
 GEO_RAGGIO_GRUPPO_KM: float = float(os.environ.get("GEO_RAGGIO_GRUPPO_KM", "25"))
 GEO_FINESTRA_GRUPPO_ORE: float = float(os.environ.get("GEO_FINESTRA_GRUPPO_ORE", "3"))
+
+# ── Analisi a gruppi ────────────────────────────────────────────────────
+# Taratura misurata su 5585 foto con 374 ancore GPS reali: la catena da 15
+# minuti produce gruppi la cui dispersione geografica sta entro 1 km nel 100%
+# dei casi verificabili. A 10 minuti la dispersione e' identica ma le chiamate
+# aumentano di un terzo; a 30 peggiora.
+GROUP_ABILITATO: bool = os.environ.get("GROUP_ABILITATO", "1") == "1"
+GROUP_GAP_MINUTI: float = float(os.environ.get("GROUP_GAP_MINUTI", "15"))
+
+# Dodici foto per blocco: e' la dimensione a cui le descrizioni restano lunghe
+# (617 caratteri mediani misurati). A sedici si accorciano su un gruppo su tre.
+GROUP_BLOCCO_FOTO: int = int(os.environ.get("GROUP_BLOCCO_FOTO", "12"))
+
+# Il passo che identifica il luogo campiona otto foto a 320 px: a quella
+# risoluzione il modello ha riconosciuto tutti i luoghi di prova con 1700
+# token, contro 3750 a risoluzione piena e nessun miglioramento.
+GROUP_CAMPIONE_LUOGO: int = int(os.environ.get("GROUP_CAMPIONE_LUOGO", "8"))
+GROUP_LUOGO_MAX_SIDE_PX: int = int(os.environ.get("GROUP_LUOGO_MAX_SIDE_PX", "320"))
+
+# Richiesta esplicita di lunghezza: senza, il modello che descrive dodici foto
+# insieme si accontenta di 246 caratteri.
+GROUP_DESCRIZIONE_MIN_CARATTERI: int = int(
+    os.environ.get("GROUP_DESCRIZIONE_MIN_CARATTERI", "350"))
