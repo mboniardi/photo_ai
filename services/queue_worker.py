@@ -20,8 +20,10 @@ from services.image_processor import prepare_for_ai
 from database.queue import (
     get_next_pending, update_queue_status,
     increment_attempts, get_queue_item, reset_stale_processing,
+    get_pending_photos_for_grouping,
 )
 from database.photos import get_photo_by_id, update_photo
+from services.photo_grouping import ORIGINI_AFFIDABILI, prepara, gruppo_di
 import config
 
 MAX_ATTEMPTS = 3
@@ -213,6 +215,135 @@ class QueueWorker:
 
         return True
 
+    def _luogo_dalle_ancore(self, gruppo: list):
+        """
+        Se nel gruppo c'e' gia' una posizione affidabile, il luogo si conosce:
+        non ha senso chiederlo al modello. Sui dati attuali capita in quasi
+        meta' dei gruppi.
+        """
+        for f in gruppo:
+            if (f["location_source"] or "") in ORIGINI_AFFIDABILI and f["latitude"] is not None:
+                return f["location_name"], f["latitude"], f["longitude"]
+        return None
+
+    async def _determina_luogo(self, gruppo: list):
+        """Il luogo comune al gruppo: dalle ancore se ci sono, altrimenti dal modello."""
+        dalle_ancore = self._luogo_dalle_ancore(gruppo)
+        if dalle_ancore:
+            return dalle_ancore
+
+        campione = gruppo[:: max(1, len(gruppo) // config.GROUP_CAMPIONE_LUOGO)]
+        campione = campione[: config.GROUP_CAMPIONE_LUOGO]
+        immagini = []
+        for f in campione:
+            try:
+                immagini.append(prepare_for_ai(
+                    f["file_path"], max_side_px=config.GROUP_LUOGO_MAX_SIDE_PX))
+            except Exception as exc:
+                logger.warning("Immagine illeggibile nel campione: %s (%s)", f["file_path"], exc)
+        if not immagini:
+            return None
+        d = await self._engine.identify_location(immagini)
+        if not d.get("luogo_riconosciuto"):
+            return None
+        return d["luogo_riconosciuto"], d.get("luogo_lat"), d.get("luogo_lon")
+
+    async def process_next_group(self) -> bool:
+        """
+        Processa il prossimo GRUPPO di foto in coda.
+
+        Il luogo si determina una volta per tutta la catena; le descrizioni si
+        scrivono a blocchi. Se il motore non sa lavorare a gruppi, o se il
+        luogo non si riesce a stabilire, o se un blocco non supera la
+        validazione, si ricade sulle chiamate singole: costa tempo, mai dati
+        sbagliati.
+        """
+        if not (config.GROUP_ABILITATO and getattr(self._engine, "supporta_gruppi", False)):
+            return await self.process_next()
+
+        righe = get_pending_photos_for_grouping(self._db_path)
+        if not righe:
+            return False
+        # sqlite3.Row non supporta .get(): prepara() lo richiede.
+        foto = prepara([dict(r) for r in righe])
+        if not foto:
+            return await self.process_next()
+
+        gruppo = gruppo_di(foto, foto[0]["photo_id"], config.GROUP_GAP_MINUTI)
+        if len(gruppo) < 2:
+            return await self.process_next()
+
+        luogo = await self._determina_luogo(gruppo)
+        if luogo is None:
+            logger.info("Luogo non determinato per un gruppo di %d foto: vado a foto singole",
+                        len(gruppo))
+            return await self.process_next()
+        nome_luogo, lat, lon = luogo
+
+        for inizio in range(0, len(gruppo), config.GROUP_BLOCCO_FOTO):
+            blocco = gruppo[inizio: inizio + config.GROUP_BLOCCO_FOTO]
+            for f in blocco:
+                update_queue_status(self._db_path, f["queue_id"], "processing")
+            self.current_photo_name = "%d foto · %s" % (len(blocco), nome_luogo)
+            try:
+                immagini = [prepare_for_ai(f["file_path"],
+                                           max_side_px=self._engine.max_side_px)
+                            for f in blocco]
+                analisi = await self._engine.analyze_group(immagini, nome_luogo, lat, lon)
+            except Exception as exc:
+                # Il blocco non ha superato la validazione, o una foto era
+                # illeggibile: le rimetto in attesa per la via singola.
+                logger.warning("Blocco di %d foto scartato (%s): vanno a foto singole",
+                               len(blocco), exc)
+                for f in blocco:
+                    update_queue_status(self._db_path, f["queue_id"], "pending")
+                continue
+
+            for f, a in zip(blocco, analisi):
+                await self._scrivi_analisi(f["photo_id"], f["queue_id"], a, f)
+
+        return True
+
+    async def _scrivi_analisi(self, photo_id: int, queue_id: int, analysis, riga: dict) -> None:
+        """Scrive un'analisi e chiude il suo item di coda. Condiviso dai due percorsi."""
+        embedding = []
+        if self._embedder is not None:
+            testo = " ".join(filter(None, [analysis.description, analysis.subject,
+                                           analysis.atmosphere, analysis.location_name]))
+            try:
+                embedding = await self._embedder.embed(testo)
+            except Exception as exc:
+                logger.warning("Embedding non disponibile per photo_id=%s: %s", photo_id, exc)
+
+        update_photo(
+            self._db_path, photo_id,
+            description=analysis.description,
+            technical_score=analysis.technical_score,
+            aesthetic_score=analysis.aesthetic_score,
+            overall_score=analysis.overall_score,
+            subject=analysis.subject,
+            atmosphere=analysis.atmosphere,
+            colors=json.dumps(analysis.colors, ensure_ascii=False),
+            strengths=analysis.strengths,
+            weaknesses=analysis.weaknesses,
+            ai_engine=analysis.ai_engine,
+            embedding=json.dumps(embedding),
+            analyzed_at=datetime.now().isoformat(timespec="seconds"),
+        )
+
+        # Stessa guardia del percorso a foto singola: una posizione che viene da
+        # un GPS o da una scelta dell'utente non si sposta mai.
+        if riga["latitude"] is None and analysis.location_name:
+            update_photo(self._db_path, photo_id,
+                         location_name=analysis.location_name,
+                         latitude=analysis.latitude,
+                         longitude=analysis.longitude,
+                         location_source="ai")
+        elif riga["latitude"] is not None and not riga["location_name"] and analysis.location_name:
+            update_photo(self._db_path, photo_id, location_name=analysis.location_name)
+
+        update_queue_status(self._db_path, queue_id, "done")
+
     async def _run_loop(self) -> None:
         """Loop principale: consuma la coda rispettando il rate limit."""
         while self.is_running:
@@ -225,7 +356,7 @@ class QueueWorker:
                 continue
 
             t_start = time.monotonic()
-            processed = await self.process_next()
+            processed = await self.process_next_group()
 
             if not processed:
                 await asyncio.sleep(5)  # coda vuota: riprova tra 5s
