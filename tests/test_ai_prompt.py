@@ -156,3 +156,27 @@ class TestParseGruppo:
         testo = json.dumps({"foto": [_voce(1), v, _voce(3)]})
         with pytest.raises(ValueError):
             parse_group_response(testo, 3)
+
+    def test_rifiuta_voce_senza_indice_n(self):
+        """Una voce senza la chiave 'n' deve sollevare ValueError, non TypeError."""
+        v = _voce(2)
+        del v["n"]  # Rimuove la chiave 'n'
+        testo = json.dumps({"foto": [_voce(1), v, _voce(3)]})
+        with pytest.raises(ValueError, match="indici"):
+            parse_group_response(testo, 3)
+
+    def test_rifiuta_indice_n_non_intero_stringa(self):
+        """Una voce con 'n' stringa (non intero) deve sollevare ValueError."""
+        v = _voce(2)
+        v["n"] = "2"  # Stringa invece di intero
+        testo = json.dumps({"foto": [_voce(1), v, _voce(3)]})
+        with pytest.raises(ValueError, match="indici"):
+            parse_group_response(testo, 3)
+
+    def test_rifiuta_indice_n_booleano(self):
+        """Una voce con 'n' booleano (True) deve sollevare ValueError."""
+        v = _voce(2)
+        v["n"] = True  # Booleano: True è istanza di int ma non deve passare
+        testo = json.dumps({"foto": [_voce(1), v, _voce(3)]})
+        with pytest.raises(ValueError, match="indici"):
+            parse_group_response(testo, 3)

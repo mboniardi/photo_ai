@@ -147,6 +147,13 @@ def parse_group_response(text: str, attese: int) -> list:
     if len(voci) != attese:
         raise ValueError(f"Attese {attese} voci, ricevute {len(voci)}")
 
+    # Valida che ogni voce abbia un indice 'n' intero valido.
+    # Nota: bool è una subclass di int, quindi escludiamo esplicitamente i booleani.
+    for v in voci:
+        n = v.get("n")
+        if n is None or not isinstance(n, int) or isinstance(n, bool):
+            raise ValueError(f"Errore negli indici: ogni voce deve avere un campo 'n' intero valido")
+
     indici = sorted(v.get("n") for v in voci)
     if indici != list(range(1, attese + 1)):
         raise ValueError(f"indici incompleti o duplicati: {indici}")
