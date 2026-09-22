@@ -173,11 +173,17 @@ def get_pending_photos_for_grouping(db_path: Optional[str] = None) -> list:
 
     La coda resta per foto: il raggruppamento avviene qui, al prelievo, cosi'
     pausa, ripresa e conteggi continuano a funzionare come prima.
+
+    L'ordine e' cronologico perche' serve a incatenare gli scatti, ma le righe
+    portano anche `priority` e `queued_at`: senza, il worker non saprebbe da
+    quale foto far partire il gruppo e la priorita' della coda smetterebbe di
+    contare (chi preme "analizza ora" accoda con priorita' 1).
     """
     with get_db(db_path) as conn:
         return conn.execute(
             """
-            SELECT q.id AS queue_id, p.id AS photo_id, p.exif_date, p.file_path,
+            SELECT q.id AS queue_id, q.priority, q.queued_at,
+                   p.id AS photo_id, p.exif_date, p.file_path,
                    p.folder_path, p.latitude, p.longitude, p.location_name,
                    p.location_source
             FROM analysis_queue q

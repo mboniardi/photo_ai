@@ -191,7 +191,8 @@ class TestPendingPhotosForGrouping:
 
         righe = get_pending_photos_for_grouping(tmp_db)
         assert [r["photo_id"] for r in righe] == [b]
-        for chiave in ("queue_id", "photo_id", "exif_date", "file_path",
+        for chiave in ("queue_id", "photo_id", "priority", "queued_at",
+                       "exif_date", "file_path",
                        "folder_path", "latitude", "longitude",
                        "location_name", "location_source"):
             assert chiave in righe[0].keys()
@@ -203,6 +204,23 @@ class TestPendingPhotosForGrouping:
         add_to_queue(tmp_db, photo_id=tardi)
         add_to_queue(tmp_db, photo_id=presto)
         assert [r["photo_id"] for r in get_pending_photos_for_grouping(tmp_db)] == [presto, tardi]
+
+    def test_riporta_la_priorita_di_ogni_item(self, tmp_db):
+        """
+        Senza la priorita' il worker non puo' far partire il gruppo dalla foto
+        piu' urgente: chi preme "analizza ora" (priorita' 1) resterebbe dietro
+        alle migliaia in attesa con priorita' 5.
+        """
+        from database.queue import add_to_queue, get_pending_photos_for_grouping
+        urgente = self._foto(tmp_db, "u.jpg", "2026-04-01T12:00:00")
+        normale = self._foto(tmp_db, "n.jpg", "2026-04-01T09:00:00")
+        add_to_queue(tmp_db, photo_id=urgente, priority=1)
+        add_to_queue(tmp_db, photo_id=normale, priority=5)
+
+        per_id = {r["photo_id"]: r for r in get_pending_photos_for_grouping(tmp_db)}
+        assert per_id[urgente]["priority"] == 1
+        assert per_id[normale]["priority"] == 5
+        assert per_id[urgente]["queued_at"] is not None
 
     def test_coda_vuota(self, tmp_db):
         from database.queue import get_pending_photos_for_grouping
