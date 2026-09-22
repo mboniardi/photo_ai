@@ -48,6 +48,28 @@ class AIEngine(ABC):
         """Risoluzione massima (lato lungo) da usare per prepare_for_ai. None = default di config."""
         return None
 
+    # I motori che sanno analizzare piu' immagini in una sola chiamata
+    # dichiarano True. Gli altri restano com'erano: il worker li usa una foto
+    # per volta.
+    supporta_gruppi: bool = False
+
+    async def identify_location(self, immagini: list) -> dict:
+        """
+        Identifica il luogo comune a piu' fotografie, in una sola chiamata.
+        Ritorna {'luogo_riconosciuto', 'luogo_lat', 'luogo_lon'}.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} non sa identificare il luogo da un gruppo")
+
+    async def analyze_group(self, immagini: list, luogo: str,
+                            latitudine=None, longitudine=None) -> list:
+        """
+        Descrive un blocco di fotografie di cui il luogo e' gia' noto.
+        Ritorna una lista di PhotoAnalysis lunga quanto `immagini`.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} non sa analizzare un gruppo")
+
     @abstractmethod
     async def analyze(
         self,

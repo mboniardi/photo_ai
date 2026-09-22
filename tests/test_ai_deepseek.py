@@ -145,3 +145,114 @@ class TestThinkingAndTokenBudget:
         rec = _patch_httpx(monkeypatch)
         await DeepSeekEngine(api_key="k").analyze(b"x")
         assert rec["json"]["thinking"] == {"type": "enabled"}
+
+
+class TestSupportaGruppi:
+    def test_deepseek_dichiara_di_supportarli(self):
+        from services.ai.deepseek import DeepSeekEngine
+        assert DeepSeekEngine(api_key="k").supporta_gruppi is True
+
+    def test_la_base_no(self):
+        from services.ai.base import AIEngine
+        assert AIEngine.supporta_gruppi is False
+
+
+def _risposta_gruppo(contenuto: str):
+    return {"choices": [{"message": {"content": contenuto}}],
+            "usage": {"total_tokens": 100}}
+
+
+class TestIdentifyLocation:
+    @pytest.mark.asyncio
+    async def test_ritorna_il_luogo(self, monkeypatch):
+        from services.ai.deepseek import DeepSeekEngine
+        catturato = {}
+
+        async def finto_post(self, url, **kw):
+            catturato["json"] = kw["json"]
+            return httpx.Response(200, json=_risposta_gruppo(
+                '{"luogo_riconosciuto": "Karnak", "luogo_lat": 25.7, "luogo_lon": 32.6}'),
+                request=httpx.Request("POST", url))
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", finto_post)
+        d = await DeepSeekEngine(api_key="k").identify_location([b"a", b"b", b"c"])
+        assert d["luogo_riconosciuto"] == "Karnak"
+        assert d["luogo_lat"] == 25.7
+
+    @pytest.mark.asyncio
+    async def test_manda_tutte_le_immagini_in_una_sola_chiamata(self, monkeypatch):
+        from services.ai.deepseek import DeepSeekEngine
+        catturato = {}
+
+        async def finto_post(self, url, **kw):
+            catturato["json"] = kw["json"]
+            return httpx.Response(200, json=_risposta_gruppo(
+                '{"luogo_riconosciuto": null, "luogo_lat": null, "luogo_lon": null}'),
+                request=httpx.Request("POST", url))
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", finto_post)
+        await DeepSeekEngine(api_key="k").identify_location([b"a", b"b", b"c"])
+        parti = catturato["json"]["messages"][0]["content"]
+        assert sum(1 for p in parti if p["type"] == "image_url") == 3
+        assert sum(1 for p in parti if p["type"] == "text") == 1
+
+    @pytest.mark.asyncio
+    async def test_lista_vuota_non_chiama_l_api(self, monkeypatch):
+        from services.ai.deepseek import DeepSeekEngine
+
+        async def esplodi(self, url, **kw):
+            raise AssertionError("non doveva chiamare l'API")
+        monkeypatch.setattr(httpx.AsyncClient, "post", esplodi)
+        d = await DeepSeekEngine(api_key="k").identify_location([])
+        assert d["luogo_riconosciuto"] is None
+
+
+class TestAnalyzeGroup:
+    def _voci(self, n):
+        return {"foto": [{"n": i + 1, "descrizione": "descrizione lunga numero %d" % i,
+                          "punteggio_tecnico": 7, "punteggio_estetico": 8,
+                          "soggetto": "s%d" % i, "atmosfera": "serena",
+                          "colori_dominanti": ["blu"], "punti_di_forza": "f",
+                          "punti_di_debolezza": None} for i in range(n)]}
+
+    @pytest.mark.asyncio
+    async def test_ritorna_un_analisi_per_foto(self, monkeypatch):
+        from services.ai.base import PhotoAnalysis
+        from services.ai.deepseek import DeepSeekEngine
+
+        async def finto_post(self, url, **kw):
+            return httpx.Response(200, json=_risposta_gruppo(json.dumps(self_voci)),
+                                  request=httpx.Request("POST", url))
+        self_voci = self._voci(3)
+        monkeypatch.setattr(httpx.AsyncClient, "post", finto_post)
+        out = await DeepSeekEngine(api_key="k").analyze_group([b"a", b"b", b"c"], "Karnak")
+        assert len(out) == 3
+        assert all(isinstance(x, PhotoAnalysis) for x in out)
+
+    @pytest.mark.asyncio
+    async def test_applica_il_luogo_a_tutte(self, monkeypatch):
+        from services.ai.deepseek import DeepSeekEngine
+        self_voci = self._voci(2)
+
+        async def finto_post(self, url, **kw):
+            return httpx.Response(200, json=_risposta_gruppo(json.dumps(self_voci)),
+                                  request=httpx.Request("POST", url))
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", finto_post)
+        out = await DeepSeekEngine(api_key="k").analyze_group(
+            [b"a", b"b"], "Karnak", latitudine=25.7, longitudine=32.6)
+        assert all(x.location_name == "Karnak" for x in out)
+        assert all(x.latitude == 25.7 and x.longitude == 32.6 for x in out)
+
+    @pytest.mark.asyncio
+    async def test_una_risposta_incompleta_solleva(self, monkeypatch):
+        from services.ai.deepseek import DeepSeekEngine
+        self_voci = self._voci(2)          # due voci per tre immagini
+
+        async def finto_post(self, url, **kw):
+            return httpx.Response(200, json=_risposta_gruppo(json.dumps(self_voci)),
+                                  request=httpx.Request("POST", url))
+
+        monkeypatch.setattr(httpx.AsyncClient, "post", finto_post)
+        with pytest.raises(ValueError):
+            await DeepSeekEngine(api_key="k").analyze_group([b"a", b"b", b"c"], "Karnak")
