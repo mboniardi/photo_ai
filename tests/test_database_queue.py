@@ -170,3 +170,40 @@ class TestAddUnanalyzedToQueue:
     def test_id_inesistente_viene_ignorato(self, tmp_db):
         from database.queue import add_unanalyzed_to_queue
         assert add_unanalyzed_to_queue(tmp_db, photo_ids=[999999]) == 0
+
+
+class TestPendingPhotosForGrouping:
+    def _foto(self, db, nome, data=None):
+        from database.photos import insert_photo, update_photo
+        pid = insert_photo(db, file_path=f"/x/{nome}", folder_path="/x",
+                           filename=nome, format="jpg", file_size=1, width=4, height=3)
+        if data:
+            update_photo(db, pid, exif_date=data)
+        return pid
+
+    def test_ritorna_solo_i_pending_con_i_dati_del_raggruppamento(self, tmp_db):
+        from database.queue import add_to_queue, get_pending_photos_for_grouping, update_queue_status
+        a = self._foto(tmp_db, "a.jpg", "2026-04-01T10:00:00")
+        b = self._foto(tmp_db, "b.jpg", "2026-04-01T10:05:00")
+        qa = add_to_queue(tmp_db, photo_id=a)
+        add_to_queue(tmp_db, photo_id=b)
+        update_queue_status(tmp_db, qa, "done")
+
+        righe = get_pending_photos_for_grouping(tmp_db)
+        assert [r["photo_id"] for r in righe] == [b]
+        for chiave in ("queue_id", "photo_id", "exif_date", "file_path",
+                       "folder_path", "latitude", "longitude",
+                       "location_name", "location_source"):
+            assert chiave in righe[0].keys()
+
+    def test_ordina_per_data_di_scatto(self, tmp_db):
+        from database.queue import add_to_queue, get_pending_photos_for_grouping
+        tardi = self._foto(tmp_db, "z.jpg", "2026-04-01T12:00:00")
+        presto = self._foto(tmp_db, "a.jpg", "2026-04-01T09:00:00")
+        add_to_queue(tmp_db, photo_id=tardi)
+        add_to_queue(tmp_db, photo_id=presto)
+        assert [r["photo_id"] for r in get_pending_photos_for_grouping(tmp_db)] == [presto, tardi]
+
+    def test_coda_vuota(self, tmp_db):
+        from database.queue import get_pending_photos_for_grouping
+        assert get_pending_photos_for_grouping(tmp_db) == []

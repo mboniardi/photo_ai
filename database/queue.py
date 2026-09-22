@@ -164,3 +164,26 @@ def add_unanalyzed_to_queue(db_path: Optional[str] = None,
     for pid in da_fare:
         add_to_queue(db_path, photo_id=pid, priority=priority)
     return len(da_fare)
+
+
+def get_pending_photos_for_grouping(db_path: Optional[str] = None) -> list:
+    """
+    Le foto in attesa, con quel poco che serve per raggrupparle: quando sono
+    state scattate, dove stanno su disco, e se hanno gia' una posizione.
+
+    La coda resta per foto: il raggruppamento avviene qui, al prelievo, cosi'
+    pausa, ripresa e conteggi continuano a funzionare come prima.
+    """
+    with get_db(db_path) as conn:
+        return conn.execute(
+            """
+            SELECT q.id AS queue_id, p.id AS photo_id, p.exif_date, p.file_path,
+                   p.folder_path, p.latitude, p.longitude, p.location_name,
+                   p.location_source
+            FROM analysis_queue q
+            JOIN photos p ON p.id = q.photo_id
+            WHERE q.status = 'pending'
+              AND (p.is_trash = 0 OR p.is_trash IS NULL)
+            ORDER BY p.exif_date, p.id
+            """
+        ).fetchall()
