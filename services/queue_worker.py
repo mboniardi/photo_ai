@@ -341,8 +341,9 @@ class QueueWorker:
 
     def _fallisci(self, righe: list, messaggio: str) -> None:
         """
-        Un passo del percorso a gruppi non e' riuscito: conta il tentativo su
-        ogni foto coinvolta, esattamente come fa la via a foto singola.
+        Un passo del percorso a gruppi non e' riuscito PRIMA di poter lavorare
+        foto per foto — il passo 1, il luogo: conta il tentativo su ogni foto
+        coinvolta, esattamente come fa la via a foto singola.
 
         Senza contatore lo stesso gruppo si riforma identico a ogni giro e il
         worker richiama il modello all'infinito, a piena velocita' e a
@@ -362,6 +363,33 @@ class QueueWorker:
         """La ricaduta a foto singola deve toccare PROPRIO la foto che ha bloccato."""
         logger.info("Ricaduta a foto singola (%s): photo_id=%s", motivo, riga["photo_id"])
         return await self.process_photo(riga["photo_id"], riga["queue_id"])
+
+    async def _ricaduta_multipla(self, righe: list, motivo: str) -> int:
+        """
+        Ricaduta a foto singole di PIU' foto, subito, in questa invocazione.
+
+        E' il "una chiamata ciascuna" della specifica (§7): quando il percorso
+        a gruppi non riesce, le sue foto tornano alla coda normale adesso,
+        non fra tre tentativi di gruppo. Rimandarle indietro `pending` non era
+        una ricaduta: il giro dopo si riformava lo STESSO gruppo, della stessa
+        dimensione, e nessuna foto veniva mai analizzata da sola.
+
+        Ritorna quante analisi sono state scritte davvero: chi fallisce anche
+        da solo si conta il tentativo dentro `_analizza_singola` e, esaurito il
+        limite, va in errore — la rete di sicurezza resta li'.
+        """
+        logger.info("Ricaduta a foto singole (%s): %d foto", motivo, len(righe))
+        scritte = 0
+        for f in righe:
+            if self._deve_fermarsi():
+                # La pausa dell'utente vale anche qui: e' spesa come le altre.
+                update_queue_status(self._db_path, f["queue_id"], "pending")
+                continue
+            await self.process_photo(f["photo_id"], f["queue_id"])
+            item = get_queue_item(self._db_path, f["queue_id"])
+            if item is not None and item["status"] == "done":
+                scritte += 1
+        return scritte
 
     async def process_next_group(self) -> bool:
         """
@@ -389,9 +417,9 @@ class QueueWorker:
         Il corpo del percorso a gruppi: gruppo, luogo, blocchi, scrittura.
 
         Il luogo si determina una volta per tutta la catena; le descrizioni si
-        scrivono a blocchi. Se il motore non sa lavorare a gruppi, o se il
-        luogo non si riesce a stabilire, si ricade sulla via singola per la
-        foto che ha bloccato: costa tempo, mai dati sbagliati.
+        scrivono a blocchi. Quando un passo non riesce si ricade sulla via
+        singola — una chiamata per foto, subito — e non si riprova lo stesso
+        gruppo: costa tempo, mai dati sbagliati.
         """
         if not (config.GROUP_ABILITATO and getattr(self._engine, "supporta_gruppi", False)):
             return await self.process_next()
@@ -420,8 +448,18 @@ class QueueWorker:
             self._fallisci(gruppo, "Luogo del gruppo non determinato: %s" % exc)
             return False
         if luogo is None:
-            return await self._ricaduta(
-                partenza, "luogo non determinato per un gruppo di %d foto" % len(gruppo))
+            # `identify_location` e' gia' stata pagata su un campione di otto
+            # immagini per QUESTO gruppo. Analizzarne una sola e tornare
+            # farebbe riformare il gruppo con N-1 foto al giro dopo, e
+            # ripagare il luogo da capo: N campioni da otto immagini invece di
+            # uno, cioe' circa nove sottomissioni per foto. E nessun contatore
+            # cresce in questo ramo, quindi non c'e' rete di sicurezza.
+            # Il gruppo intero si fa a foto singole qui, adesso: una
+            # identify_location piu' N analisi singole, che e' il
+            # comportamento di prima del raggruppamento.
+            scritte = await self._ricaduta_multipla(
+                gruppo, "luogo non determinato per un gruppo di %d foto" % len(gruppo))
+            return scritte > 0
         nome_luogo, lat, lon = luogo
 
         scritte = 0
@@ -449,10 +487,26 @@ class QueueWorker:
                                      % (len(analisi), len(blocco)))
             except Exception as exc:
                 # Il blocco non ha superato la validazione, o una foto era
-                # illeggibile: conta il tentativo e riprova per la via singola.
+                # illeggibile: si scarta il blocco INTERO e le sue foto si
+                # analizzano subito una per una, qui, per la via singola.
+                #
+                # Rimandarle `pending` e basta non era una ricaduta: il giro
+                # dopo si riformava lo stesso blocco identico e dopo
+                # MAX_ATTEMPTS giri finivano tutte in `error` senza che
+                # nessuna fosse mai stata analizzata da sola. Due costi
+                # misurati su 4437 foto a blocchi da dodici: un solo file
+                # corrotto mandava in errore anche le altre undici foto sane,
+                # e un fallimento sistematico di analyze_group valeva circa
+                # 1110 chiamate da dodici immagini a piena risoluzione con
+                # zero descrizioni scritte.
+                #
+                # Il contatore dei tentativi non sparisce: lo incrementa
+                # `_analizza_singola` per le foto che falliscono anche da
+                # sole, e dopo MAX_ATTEMPTS quelle vanno in `error`.
                 logger.warning("Blocco di %d foto scartato (%s)", len(blocco), exc)
                 self._pausa_se_transiente(str(exc), "blocco di %d foto" % len(blocco))
-                self._fallisci(blocco, str(exc))
+                scritte += await self._ricaduta_multipla(
+                    blocco, "blocco di %d foto scartato" % len(blocco))
                 continue
 
             for f, a in zip(blocco, analisi):

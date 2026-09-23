@@ -433,6 +433,7 @@ class EngineDiGruppoFinto:
     - `luogo_rotto`       : `identify_location` solleva (errore di rete)
     - `errore_luogo`      : il testo dell'eccezione di `identify_location`
     - `analisi_mancanti`  : quante analisi in meno rendere rispetto alle immagini
+    - `singola_rotta`     : anche `analyze` solleva (il modello e' giu' del tutto)
     - `dopo_blocco`       : callback eseguita alla fine di ogni `analyze_group`
     """
     supporta_gruppi = True
@@ -440,13 +441,14 @@ class EngineDiGruppoFinto:
 
     def __init__(self, luogo, lat, lon, gruppo_rotto=False, blocchi_rotti=(),
                  luogo_rotto=False, errore_luogo="DeepSeek irraggiungibile",
-                 analisi_mancanti=0, dopo_blocco=None):
+                 analisi_mancanti=0, singola_rotta=False, dopo_blocco=None):
         self._luogo, self._lat, self._lon = luogo, lat, lon
         self._rotto = gruppo_rotto
         self._blocchi_rotti = set(blocchi_rotti)
         self._luogo_rotto = luogo_rotto
         self._errore_luogo = errore_luogo
         self._mancanti = analisi_mancanti
+        self._singola_rotta = singola_rotta
         self.dopo_blocco = dopo_blocco
         self.chiamate_gruppo = 0
         self.chiamate_luogo = 0
@@ -481,6 +483,8 @@ class EngineDiGruppoFinto:
 
     async def analyze(self, image_bytes, location_hint=""):
         self.chiamate_singole += 1
+        if self._singola_rotta:
+            raise RuntimeError("DeepSeek irraggiungibile anche a foto singola")
         from services.ai.base import PhotoAnalysis
         return PhotoAnalysis(description="singola", technical_score=7, aesthetic_score=8,
                              subject="s", atmosphere="a", colors=[], strengths="f",
@@ -586,8 +590,12 @@ class TestProcessNextGroup:
         Se non e' stata scritta NESSUNA analisi la funzione deve dire False,
         altrimenti il loop del worker non applica la sua pausa e riforma lo
         stesso gruppo subito, a piena velocita' e a pagamento.
+
+        "Nessuna analisi" vuol dire che ha fallito anche la ricaduta a foto
+        singole: un blocco che fallisce da solo, ormai, qualcosa la scrive.
         """
-        engine = EngineDiGruppoFinto(luogo="X", lat=1.0, lon=2.0, gruppo_rotto=True)
+        engine = EngineDiGruppoFinto(luogo="X", lat=1.0, lon=2.0, gruppo_rotto=True,
+                                     singola_rotta=True)
         w, db = self._worker_con(tmp_path, monkeypatch, engine)
         self._foto(db, tmp_path, "a.jpg", "10:00")
         self._foto(db, tmp_path, "b.jpg", "10:05")
@@ -789,6 +797,137 @@ class TestProcessNextGroup:
         from database.photos import get_photo_by_id
         assert get_photo_by_id(db, isolata)["analyzed_at"] is not None
 
+    @pytest.mark.asyncio
+    async def test_la_ricaduta_ignora_la_priorita_e_prende_chi_ha_bloccato(
+            self, tmp_path, monkeypatch):
+        """
+        Il discriminante vero fra `process_photo` e `process_next`.
+
+        In coda c'e' una foto piu' urgente (priorita' 1) che NON entra in
+        nessun gruppo — non ha istante di scatto, quindi `prepara` la scarta —
+        e una foto con priorita' 5 che invece blocca il percorso a gruppi
+        perche' e' isolata. `process_next()` prenderebbe la piu' urgente e
+        lascerebbe la bloccante in coda a rifare lo stesso giro per sempre.
+        """
+        from database.photos import insert_photo, get_photo_by_id
+        from database.queue import add_to_queue
+
+        engine = EngineDiGruppoFinto(luogo="X", lat=1.0, lon=2.0)
+        w, db = self._worker_con(tmp_path, monkeypatch, engine)
+
+        bloccante = self._foto(db, tmp_path, "bloccante.jpg", "10:00", priorita=5)
+        # Piu' urgente, ma senza EXIF e senza file su disco: nessun istante di
+        # scatto, quindi resta fuori dal raggruppamento.
+        mancante = str(tmp_path / "mai_esistita.jpg")
+        urgente = insert_photo(db, file_path=mancante, folder_path=str(tmp_path),
+                               filename="mai_esistita.jpg", format="jpg",
+                               file_size=10, width=40, height=30)
+        add_to_queue(db, photo_id=urgente, priority=1)
+
+        assert await w.process_next_group() is True
+
+        assert engine.chiamate_singole == 1
+        assert get_photo_by_id(db, bloccante)["analyzed_at"] is not None
+        assert get_photo_by_id(db, urgente)["analyzed_at"] is None
+
+    # ------------------------- C5: un blocco che fallisce ricade sulle singole
+
+    @pytest.mark.asyncio
+    async def test_una_foto_illeggibile_non_porta_giu_tutto_il_blocco(
+            self, tmp_path, monkeypatch):
+        """
+        `prepare_for_ai` sta dentro lo stesso `try` del blocco: un solo file
+        corrotto faceva finire in errore anche le altre undici foto sane.
+        Adesso il blocco si scarta e le sane vengono analizzate una per una.
+        """
+        import os
+        from database.photos import get_photo_by_id
+        from database.queue import (get_queue_counts, get_queue_item,
+                                    get_pending_photos_for_grouping)
+
+        engine = EngineDiGruppoFinto(luogo="X", lat=1.0, lon=2.0)
+        w, db = self._worker_con(tmp_path, monkeypatch, engine, GROUP_BLOCCO_FOTO=12)
+        ids = [self._foto(db, tmp_path, "f%02d.jpg" % i, "10:%02d" % i)
+               for i in range(4)]
+        rotta = ids[2]
+        os.remove(get_photo_by_id(db, rotta)["file_path"])
+
+        assert await w.process_next_group() is True
+
+        # il blocco non arriva nemmeno al modello: `prepare_for_ai` salta prima
+        assert engine.chiamate_gruppo == 0
+        assert engine.chiamate_singole == 3         # le tre sane, una per una
+        for pid in ids:
+            analizzata = get_photo_by_id(db, pid)["analyzed_at"] is not None
+            assert analizzata is (pid != rotta), "photo_id=%s" % pid
+
+        conti = get_queue_counts(db)
+        assert conti["done"] == 3
+        assert conti["processing"] == 0
+        assert conti["pending"] + conti["error"] == 1   # solo la rotta riprovera'
+
+        qid = [r["queue_id"] for r in get_pending_photos_for_grouping(db)
+               if r["photo_id"] == rotta]
+        if qid:
+            assert get_queue_item(db, qid[0])["attempts"] == 1
+
+    @pytest.mark.asyncio
+    async def test_un_blocco_fallito_si_rifa_subito_a_foto_singole(
+            self, tmp_path, monkeypatch):
+        """
+        Un fallimento sistematico di `analyze_group` costava tre tentativi di
+        blocco a piena risoluzione per foto e zero descrizioni scritte: su 4437
+        foto, circa 1110 chiamate da dodici immagini buttate. Adesso costa un
+        tentativo di blocco piu' N chiamate singole, e le descrizioni ci sono.
+        """
+        from database.queue import get_queue_counts
+
+        engine = EngineDiGruppoFinto(luogo="X", lat=1.0, lon=2.0, gruppo_rotto=True)
+        w, db = self._worker_con(tmp_path, monkeypatch, engine, GROUP_BLOCCO_FOTO=12)
+        for i in range(5):
+            self._foto(db, tmp_path, "f%02d.jpg" % i, "10:%02d" % i)
+
+        assert await w.process_next_group() is True
+
+        assert engine.chiamate_gruppo == 1
+        assert engine.chiamate_singole == 5
+        conti = get_queue_counts(db)
+        assert conti["done"] == 5
+        assert conti["pending"] == 0
+        assert conti["processing"] == 0
+
+    # ------------------- C6: luogo non riconosciuto, una sola identify_location
+
+    @pytest.mark.asyncio
+    async def test_luogo_non_riconosciuto_analizza_tutto_il_gruppo_a_singole(
+            self, tmp_path, monkeypatch):
+        """
+        `identify_location` e' gia' stata pagata su otto immagini: ricadere su
+        UNA foto sola faceva riformare il gruppo con N-1 foto al giro dopo e
+        ripagare il luogo da capo — N campioni invece di uno. Il gruppo intero
+        va fatto qui, adesso.
+        """
+        from database.queue import get_queue_counts
+
+        engine = EngineDiGruppoFinto(luogo=None, lat=None, lon=None)
+        w, db = self._worker_con(tmp_path, monkeypatch, engine)
+        for i in range(5):
+            self._foto(db, tmp_path, "f%02d.jpg" % i, "10:%02d" % i)
+
+        assert await w.process_next_group() is True
+
+        assert engine.chiamate_luogo == 1
+        assert engine.chiamate_gruppo == 0
+        assert engine.chiamate_singole == 5
+        conti = get_queue_counts(db)
+        assert conti["done"] == 5
+        assert conti["pending"] == 0
+        assert conti["processing"] == 0
+
+        # E il giro dopo non si ripaga niente: la coda e' vuota.
+        assert await w.process_next_group() is False
+        assert engine.chiamate_luogo == 1
+
     # ------------------------------------------------------- I1: campionamento
 
     def test_il_campione_e_distribuito_e_mai_piu_lungo_del_dovuto(self):
@@ -813,19 +952,25 @@ class TestProcessNextGroup:
     async def test_meno_analisi_che_immagini_e_un_fallimento(self, tmp_path, monkeypatch):
         """
         `zip` troncherebbe in silenzio e le foto in eccesso resterebbero
-        'processing' per sempre.
+        'processing' per sempre. Il blocco si scarta INTERO — nessuna
+        descrizione di gruppo viene scritta — e le foto si rifanno a una a una.
         """
         engine = EngineDiGruppoFinto(luogo="X", lat=1.0, lon=2.0, analisi_mancanti=1)
         w, db = self._worker_con(tmp_path, monkeypatch, engine)
-        self._foto(db, tmp_path, "a.jpg", "10:00")
-        self._foto(db, tmp_path, "b.jpg", "10:05")
+        a = self._foto(db, tmp_path, "a.jpg", "10:00")
+        b = self._foto(db, tmp_path, "b.jpg", "10:05")
 
-        assert await w.process_next_group() is False
+        assert await w.process_next_group() is True
         from database.queue import get_queue_counts
         conti = get_queue_counts(db)
         assert conti["processing"] == 0
-        assert conti["done"] == 0
-        assert conti["pending"] == 2
+        assert conti["pending"] == 0
+        assert conti["done"] == 2
+        # nessuna analisi di blocco scritta: tutte e due vengono dalla via singola
+        from database.photos import get_photo_by_id
+        assert engine.chiamate_singole == 2
+        assert get_photo_by_id(db, a)["description"] == "singola"
+        assert get_photo_by_id(db, b)["description"] == "singola"
 
     # ---------------------------------------- I3: niente sovrascritture su snapshot
 
@@ -908,8 +1053,11 @@ class TestProcessNextGroup:
         assert engine.chiamate_gruppo == 2
         from database.queue import get_queue_counts
         conti = get_queue_counts(db)
-        assert conti["done"] == 3          # il secondo blocco e' passato
-        assert conti["pending"] == 12      # il primo riprovera'
+        # il primo blocco e' stato rifatto subito a foto singole, il secondo
+        # e' passato a gruppo: nessuna foto resta indietro
+        assert engine.chiamate_singole == 12
+        assert conti["done"] == 15
+        assert conti["pending"] == 0
         assert conti["processing"] == 0
 
     # ------------------------------------------------------------- I5: pausa
