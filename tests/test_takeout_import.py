@@ -1,5 +1,6 @@
 """Test per services/takeout_import.py e per la rotta /api/takeout/importa-album."""
 import importlib
+import logging
 import os
 import random
 import shutil
@@ -369,6 +370,35 @@ def test_guasto_dopo_l_insert_non_lascia_righe_orfane(
     assert _righe(tmp_db, "SELECT id FROM photos WHERE origine = 'google'") == []
     assert _righe(tmp_db, "SELECT * FROM analysis_queue") == []
     assert _righe(tmp_db, "SELECT * FROM doppioni_sospetti") == []
+
+
+def test_una_pulizia_fallita_non_maschera_l_errore_originale(
+        tmp_db, album, derivati_tmp, monkeypatch, caplog):
+    """
+    `_annulla` gira sul percorso di guasto, e il guasto che ci porta (un DB
+    bloccato) e' proprio quello che puo' far fallire anche lui. Se la sua
+    eccezione sostituisse l'originale, nel log resterebbe il sintomo sbagliato.
+    """
+    cartella, zippa = album
+    _scrivi_foto(cartella, "a.jpg", 1)
+
+    def coda_rotta(*a, **k):
+        raise sqlite3.OperationalError("database locked")
+    monkeypatch.setattr(takeout_import, "add_to_queue", coda_rotta)
+
+    def pulizia_rotta(*a, **k):
+        raise OSError("store non raggiungibile")
+    monkeypatch.setattr(takeout_import.derivati, "cancella", pulizia_rotta)
+
+    with caplog.at_level(logging.WARNING, logger="services.takeout_import"):
+        r = importa_album([zippa()], tmp_db)
+
+    assert r["errori"] == 1 and r["nuove"] == 0
+    testi = [rec.getMessage() for rec in caplog.records]
+    # l'eccezione originale arriva a chi conta gli errori, non sostituita
+    assert any("database locked" in t for t in testi), testi
+    # e il guasto della pulizia non resta muto
+    assert any("store non raggiungibile" in t for t in testi), testi
 
 
 def test_due_copie_di_un_incerta_hanno_ognuna_la_propria_revisione(tmp_db, tmp_path, derivati_tmp):

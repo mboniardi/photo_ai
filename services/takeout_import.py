@@ -262,7 +262,17 @@ def _elabora(db_path: str, voce, indice, r: dict, album_con_foto: set) -> None:
         else:
             add_to_queue(db_path, photo_id=photo_id)
     except BaseException:
-        _annulla(db_path, photo_id)
+        # Il guasto che porta qui (un DB bloccato) e' proprio quello che puo'
+        # far fallire anche la pulizia. Se la sua eccezione sostituisse
+        # l'originale, il log direbbe il sintomo sbagliato e il conteggio
+        # degli errori resterebbe lo stesso: meglio registrarla a parte.
+        try:
+            _annulla(db_path, photo_id)
+        except Exception as pulizia:
+            logger.error(
+                "Pulizia della foto %s fallita: puo' restare una riga Google "
+                "con i derivati ma senza coda ne' sospetto, da togliere a "
+                "mano: %s", photo_id, pulizia)
         raise
 
     # Le copie della stessa foto in altri album dello stesso archivio devono
