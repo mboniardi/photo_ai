@@ -5,11 +5,12 @@ import os
 from typing import List
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import config
 from database.photos import get_photo_id_by_path, update_photo
 from database import get_db
+from services import takeout_import
 
 logger = logging.getLogger(__name__)
 
@@ -124,3 +125,35 @@ def import_takeout_coords(req: ImportRequest = ImportRequest()):
         "not_found": not_found,
         "errors": errors,
     }
+
+
+class ImportaAlbumRequest(BaseModel):
+    zip_paths: List[str] = Field(min_length=1)
+
+
+def _percorso_consentito(percorso: str) -> bool:
+    """True se il file esiste e, risolti symlink e "..", sta sotto una radice ammessa."""
+    reale = os.path.realpath(percorso)
+    if not os.path.isfile(reale):
+        return False
+    for radice in (config.PHOTOS_PATH, config.APP_DATA_PATH):
+        radice_reale = os.path.realpath(radice)
+        if os.path.commonpath([reale, radice_reale]) == radice_reale:
+            return True
+    return False
+
+
+@router.post("/importa-album")
+def importa_album(req: ImportaAlbumRequest):
+    """
+    Importa gli ZIP di un album Google Takeout: coordinate alle foto gia' nel
+    catalogo, nuove voci (solo derivati) per quelle che esistono solo su Google.
+    Gli ZIP non vengono cancellati: il risultato ne riporta i percorsi.
+    """
+    # I percorsi arrivano dal client: devono stare sotto la NAS o i dati app.
+    for percorso in req.zip_paths:
+        if not _percorso_consentito(percorso):
+            raise HTTPException(status_code=400,
+                                detail=f"Percorso non valido o non consentito: {percorso}")
+    return takeout_import.importa_album(
+        [os.path.realpath(p) for p in req.zip_paths], config.LOCAL_DB)
