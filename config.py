@@ -32,6 +32,15 @@ REMOTE_DB: str = f"{APP_DATA_PATH}/photo_ai.db"
 # Cartella dove vengono caricati i JSON di Google Takeout
 TAKEOUT_JSON_PATH: str = os.environ.get("TAKEOUT_JSON_PATH", f"{APP_DATA_PATH}/takeout_json")
 
+# Takeout localizza il suffisso dei file modificati: inglese "-edited",
+# italiano "-modificato". La lista e' un sovrainsieme deliberato — un suffisso
+# di troppo non fa danno, uno mancante fa entrare la foto due volte.
+TAKEOUT_SUFFISSI_MODIFICATO: list[str] = [
+    s.strip() for s in os.environ.get(
+        "TAKEOUT_SUFFISSI_MODIFICATO", "-edited,-modificato,-bearbeitet,-modifié,-editado"
+    ).split(",") if s.strip()
+]
+
 # ── Secrets / credenziali (nessun default: devono venire dall'env) ─
 GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
@@ -156,3 +165,29 @@ GROUP_LUOGO_MAX_SIDE_PX: int = int(os.environ.get("GROUP_LUOGO_MAX_SIDE_PX", "32
 # insieme si accontenta di 246 caratteri.
 GROUP_DESCRIZIONE_MIN_CARATTERI: int = int(
     os.environ.get("GROUP_DESCRIZIONE_MIN_CARATTERI", "350"))
+
+
+# ── Store dei derivati (thumb + proxy) ──────────────────────────────────
+# Cache rigenerabile: ogni foto ha un padrone altrove (NAS o Google), quindi
+# questa directory non va nel backup. Protetto e' solo il database.
+# ATTENZIONE: deve stare sul disco della VM, accanto a LOCAL_DB, NON sotto
+# APP_DATA_PATH che punta alla NAS (/mnt/nas/photo_ai_data). Servire ogni
+# riquadro della griglia dalla rete vanificherebbe tutto il lavoro.
+DERIVATI_PATH: str = os.environ.get("DERIVATI_PATH", "/opt/photo_ai/data/derivati")
+PROXY_SIZE: int = int(os.environ.get("PROXY_SIZE", 2048))
+PROXY_QUALITY: int = int(os.environ.get("PROXY_QUALITY", 85))
+
+
+# ── Riconoscimento doppioni Takeout ─────────────────────────────────────
+# Valori di partenza. Misurati su foto sintetiche: stessa foto 0..2 bit fra i
+# due percorsi reali, foto diverse 20..42. Da ritarare su dati veri: due scatti
+# REALI della stessa scena stanno molto piu' vicini di due immagini a caso.
+TAKEOUT_PHASH_CERTO: int = int(os.environ.get("TAKEOUT_PHASH_CERTO", "6"))
+TAKEOUT_PHASH_INCERTO: int = int(os.environ.get("TAKEOUT_PHASH_INCERTO", "12"))
+
+# Una soglia "certa" sopra quella "incerta" farebbe fondere in silenzio ogni
+# candidata entro INCERTO, cioe' farebbe perdere foto: meglio fermarsi subito.
+if TAKEOUT_PHASH_CERTO > TAKEOUT_PHASH_INCERTO:
+    raise ValueError(
+        f"TAKEOUT_PHASH_CERTO ({TAKEOUT_PHASH_CERTO}) deve essere <= "
+        f"TAKEOUT_PHASH_INCERTO ({TAKEOUT_PHASH_INCERTO})")

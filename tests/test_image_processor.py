@@ -277,3 +277,137 @@ class TestDecodeAtReducedScale:
 
         assert visto, "exif_transpose non chiamata"
         assert max(visto[0]) <= 1024, f"la rotazione riceve l'immagine a {visto[0]}"
+
+
+class TestGenerateProxy:
+    def test_proxy_rispetta_il_lato_lungo(self, tmp_path):
+        """Proxy a 2048 px sul lato lungo (default config.PROXY_SIZE)."""
+        from services.image_processor import generate_proxy
+        path = str(tmp_path / "grande.jpg")
+        Image.new("RGB", (6000, 4000)).save(path, "JPEG")
+        img = Image.open(io.BytesIO(generate_proxy(path)))
+        assert max(img.size) == 2048
+
+    def test_proxy_non_ingrandisce(self, tmp_path):
+        """Immagine già più piccola del proxy: dimensioni invariate."""
+        from services.image_processor import generate_proxy
+        path = str(tmp_path / "piccola.jpg")
+        Image.new("RGB", (800, 600)).save(path, "JPEG")
+        img = Image.open(io.BytesIO(generate_proxy(path)))
+        assert img.size == (800, 600)
+
+    def test_result_is_valid_jpeg(self, tmp_path):
+        from services.image_processor import generate_proxy
+        path = str(tmp_path / "test.jpg")
+        Image.new("RGB", (800, 600)).save(path, "JPEG")
+        img = Image.open(io.BytesIO(generate_proxy(path)))
+        assert img.format == "JPEG"
+
+    def test_custom_size(self, tmp_path):
+        from services.image_processor import generate_proxy
+        path = str(tmp_path / "test.jpg")
+        Image.new("RGB", (800, 600)).save(path, "JPEG")
+        img = Image.open(io.BytesIO(generate_proxy(path, size=300)))
+        assert max(img.size) == 300
+
+    def test_default_quality_is_config_proxy_quality(self, tmp_path, monkeypatch):
+        """Senza quality esplicita il proxy usa config.PROXY_QUALITY, letto a runtime."""
+        import config
+        import services.image_processor as m
+        seen = []
+        real_encode = m._encode_jpeg
+        def spia(img, quality):
+            seen.append(quality)
+            return real_encode(img, quality)
+        monkeypatch.setattr(m, "_encode_jpeg", spia)
+        monkeypatch.setattr(config, "PROXY_QUALITY", 37)
+        path = str(tmp_path / "test.jpg")
+        Image.new("RGB", (800, 600)).save(path, "JPEG")
+        m.generate_proxy(path)
+        assert seen == [37]
+
+    def test_rotation_happens_after_the_resize(self, tmp_path, monkeypatch):
+        """Stesso ordine di generate_thumbnail: la rotazione EXIF riceve
+        un'immagine già ridotta, non la decodifica a piena risoluzione."""
+        from PIL import ImageOps
+        import services.image_processor as m
+        visto = []
+        vero = ImageOps.exif_transpose
+        def spia(img, **kw):
+            visto.append(img.size)
+            return vero(img, **kw)
+        monkeypatch.setattr(m.ImageOps, "exif_transpose", spia)
+        path = str(tmp_path / "grande.jpg")
+        Image.new("RGB", (6000, 4000)).save(path, "JPEG", quality=70)
+
+        m.generate_proxy(path, size=800)
+
+        assert visto, "exif_transpose non chiamata"
+        assert max(visto[0]) <= 800, (
+            f"la rotazione riceve l'immagine a {visto[0]}: decodificata a piena risoluzione")
+
+    def test_orientation_is_applied(self, tmp_path):
+        import piexif
+        from services.image_processor import generate_proxy
+        path = str(tmp_path / "ruotata.jpg")
+        Image.new("RGB", (800, 400), (10, 20, 30)).save(path, "JPEG")
+        piexif.insert(piexif.dump({"0th": {piexif.ImageIFD.Orientation: 6}}), path)
+        img = Image.open(io.BytesIO(generate_proxy(path)))
+        assert img.height > img.width, f"orientamento perso: {img.size}"
+
+
+class TestPrepareForAiDaStore:
+    """
+    L'AI legge dal proxy nello store, non dall'originale: le foto solo-Google
+    hanno un `file_path` che non e' un file ("google:/Album/nome.jpg") e senza
+    questo non sarebbero mai analizzabili.
+    """
+
+    @pytest.fixture
+    def store(self, tmp_path, monkeypatch):
+        import config
+        monkeypatch.setattr(config, "DERIVATI_PATH", str(tmp_path / "derivati"))
+        return str(tmp_path / "derivati")
+
+    @staticmethod
+    def _proxy(photo_id, lato=2048):
+        from services import derivati
+        buf = io.BytesIO()
+        Image.new("RGB", (lato, lato // 2), (10, 120, 200)).save(buf, "JPEG")
+        derivati.scrivi(photo_id, "proxy", buf.getvalue())
+
+    def test_una_foto_google_si_prepara_dal_proxy(self, store, monkeypatch):
+        import services.image_processor as m
+        self._proxy(42)
+
+        def mai(path):
+            raise AssertionError("ha aperto il filesystem: %s" % path)
+        monkeypatch.setattr(m, "open_any_format", mai)
+
+        dati = m.prepare_for_ai_da_store(42, "google:/Vacanza/IMG_1234.jpg")
+        assert isinstance(dati, bytes) and dati
+        assert Image.open(io.BytesIO(dati)).format == "JPEG"
+
+    def test_senza_proxy_si_torna_all_originale(self, store, tmp_path):
+        import services.image_processor as m
+        path = str(tmp_path / "nas.jpg")
+        Image.new("RGB", (300, 200), (200, 10, 10)).save(path, "JPEG")
+        dati = m.prepare_for_ai_da_store(7, path)
+        assert Image.open(io.BytesIO(dati)).size == (300, 200)
+
+    def test_senza_proxy_e_senza_file_solleva(self, store):
+        import services.image_processor as m
+        with pytest.raises(Exception):
+            m.prepare_for_ai_da_store(7, "google:/Vacanza/mai_esistita.jpg")
+
+    def test_rispetta_il_lato_massimo_dell_engine(self, store):
+        import services.image_processor as m
+        self._proxy(42)
+        dati = m.prepare_for_ai_da_store(42, "google:/V/x.jpg", max_side_px=320)
+        assert max(Image.open(io.BytesIO(dati)).size) == 320
+
+    def test_il_proxy_piu_piccolo_del_limite_non_viene_ingrandito(self, store):
+        import services.image_processor as m
+        self._proxy(42, lato=400)
+        dati = m.prepare_for_ai_da_store(42, "google:/V/x.jpg", max_side_px=1280)
+        assert Image.open(io.BytesIO(dati)).size == (400, 200)

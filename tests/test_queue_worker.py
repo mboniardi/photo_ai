@@ -1112,3 +1112,86 @@ class TestProcessPhoto:
         from services.queue_worker import QueueWorker
         worker = QueueWorker(engine=make_fake_engine(), db_path=tmp_db, rpm_limit=None)
         assert await worker.process_photo(999, 999) is False
+
+
+class TestFotoGoogleDalloStore:
+    """
+    Le foto solo-Google hanno un `file_path` che non e' un file
+    ("google:/Album/nome.jpg"): i loro pixel stanno solo nei derivati. Se
+    l'analisi parte dall'originale non sono analizzabili per nulla, e in un
+    blocco trascinano giu' anche le altre.
+    """
+
+    def _ambiente(self, tmp_path, monkeypatch, engine, **env):
+        import config
+        import importlib
+        db = str(tmp_path / "g.db")
+        monkeypatch.setenv("LOCAL_DB", db)
+        monkeypatch.setenv("DERIVATI_PATH", str(tmp_path / "derivati"))
+        for chiave, valore in env.items():
+            monkeypatch.setenv(chiave, str(valore))
+        importlib.reload(config)
+        from database.models import init_db
+        init_db(db)
+        from services.queue_worker import QueueWorker
+        return QueueWorker(engine=engine, db_path=db, rpm_limit=None), db
+
+    def _foto_google(self, db, nome, ora, priorita=5):
+        """Riga solo-Google: nessun file su disco, solo i derivati nello store."""
+        from database.photos import insert_photo, update_photo
+        from database.queue import add_to_queue
+        from services import derivati
+        buf = io.BytesIO()
+        Image.new("RGB", (800, 600), (30, 90, 160)).save(buf, "JPEG")
+        pid = insert_photo(db, file_path=f"google:/Vacanza/{nome}",
+                           folder_path="google:/Vacanza", filename=nome,
+                           format="jpg", file_size=10, width=800, height=600)
+        update_photo(db, pid, exif_date=f"2026-04-01T{ora}:00")
+        derivati.scrivi(pid, "proxy", buf.getvalue())
+        add_to_queue(db, photo_id=pid, priority=priorita)
+        return pid
+
+    @pytest.mark.asyncio
+    async def test_una_foto_google_si_analizza_dal_proxy(self, tmp_path, monkeypatch):
+        from database.photos import get_photo_by_id
+        from database.queue import get_queue_counts
+        w, db = self._ambiente(tmp_path, monkeypatch, make_fake_engine())
+        pid = self._foto_google(db, "IMG_1.jpg", "10:00")
+
+        assert await w.process_next() is True
+
+        assert get_photo_by_id(db, pid)["description"] == "Foto di test"
+        assert get_photo_by_id(db, pid)["analyzed_at"] is not None
+        assert get_queue_counts(db)["done"] == 1
+
+    @pytest.mark.asyncio
+    async def test_un_blocco_con_una_foto_google_non_si_perde(self, tmp_path, monkeypatch):
+        """
+        Una sola Google nel blocco faceva fallire `prepare_for_ai` e il blocco
+        INTERO veniva scartato, dopo aver gia' pagato `identify_location`.
+        """
+        from database.photos import get_photo_by_id, insert_photo, update_photo
+        from database.queue import add_to_queue
+        from services import derivati
+        engine = EngineDiGruppoFinto(luogo="X", lat=1.0, lon=2.0)
+        w, db = self._ambiente(tmp_path, monkeypatch, engine)
+
+        ids = [self._foto_google(db, "g%d.jpg" % i, "10:0%d" % i) for i in range(3)]
+        # Una quarta foto con un originale vero, nello stesso album Google:
+        # il blocco e' misto e deve restare intero.
+        vera = str(tmp_path / "vera.jpg")
+        Image.new("RGB", (400, 300), (200, 30, 30)).save(vera, "JPEG")
+        pid = insert_photo(db, file_path=vera, folder_path="google:/Vacanza",
+                           filename="vera.jpg", format="jpg", file_size=10,
+                           width=400, height=300)
+        update_photo(db, pid, exif_date="2026-04-01T10:03:00")
+        add_to_queue(db, photo_id=pid, priority=5)
+        assert derivati.leggi(pid, "proxy") is None
+        ids.append(pid)
+
+        assert await w.process_next_group() is True
+
+        assert engine.chiamate_gruppo == 1
+        assert engine.chiamate_singole == 0
+        for i in ids:
+            assert get_photo_by_id(db, i)["analyzed_at"] is not None, "photo_id=%s" % i

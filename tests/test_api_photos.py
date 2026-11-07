@@ -10,6 +10,8 @@ def client_with_photo(tmp_path, monkeypatch):
     db = str(tmp_path / "test.db")
     monkeypatch.setenv("LOCAL_DB", db)
     monkeypatch.setenv("SECRET_KEY", "test-secret")
+    # Lo store dei derivati va isolato: la rotta thumbnail ci scrive.
+    monkeypatch.setenv("DERIVATI_PATH", str(tmp_path / "derivati"))
     import config, importlib
     importlib.reload(config)
     from database.models import init_db
@@ -338,3 +340,134 @@ class TestFiltriDelleRotte:
         griglia = sorted(p["id"] for p in c.get("/api/photos", params=par).json())
         selezione = sorted(c.get("/api/photos/ids", params=par).json()["ids"])
         assert griglia == selezione
+
+
+class TestDerivatiDalloStore:
+    """thumbnail e proxy: prima lo store, poi generazione dal file originale
+    (che viene memorizzata), altrimenti 404."""
+
+    @pytest.fixture
+    def store(self):
+        # il percorso e' gia' isolato da client_with_photo
+        from services import derivati
+        return derivati
+
+    def test_thumbnail_servita_dallo_store_non_tocca_il_file(self, client_with_photo, store):
+        import os
+        c, pid, photo_path = client_with_photo
+        store.scrivi(pid, "thumb", b"finto")
+        os.remove(photo_path)
+        resp = c.get(f"/api/photos/{pid}/thumbnail")
+        assert resp.status_code == 200
+        assert resp.content == b"finto"
+        assert resp.headers["content-type"] == "image/jpeg"
+        assert resp.headers["cache-control"] == "max-age=86400"
+
+    def test_thumbnail_assente_viene_generata_e_memorizzata(self, client_with_photo, store):
+        c, pid, _ = client_with_photo
+        assert store.leggi(pid, "thumb") is None
+        resp = c.get(f"/api/photos/{pid}/thumbnail")
+        assert resp.status_code == 200
+        assert store.leggi(pid, "thumb") == resp.content
+
+    def test_thumbnail_memorizzata_regge_senza_file(self, client_with_photo, store):
+        import os
+        c, pid, photo_path = client_with_photo
+        prima = c.get(f"/api/photos/{pid}/thumbnail").content
+        os.remove(photo_path)
+        assert c.get(f"/api/photos/{pid}/thumbnail").content == prima
+
+    def test_thumbnail_senza_file_e_senza_derivato_da_404(self, client_with_photo, store):
+        import os
+        c, pid, photo_path = client_with_photo
+        os.remove(photo_path)
+        assert c.get(f"/api/photos/{pid}/thumbnail").status_code == 404
+
+    def test_thumbnail_di_foto_inesistente_da_404(self, client_with_photo, store):
+        c, pid, _ = client_with_photo
+        store.scrivi(pid + 1, "thumb", b"orfano")
+        assert c.get(f"/api/photos/{pid + 1}/thumbnail").status_code == 404
+
+    def test_thumbnail_size_diverso_dal_default_non_sporca_lo_store(self, client_with_photo, store):
+        import io
+        c, pid, _ = client_with_photo
+        resp = c.get(f"/api/photos/{pid}/thumbnail?size=160")
+        assert resp.status_code == 200
+        assert max(Image.open(io.BytesIO(resp.content)).size) <= 160
+        assert store.leggi(pid, "thumb") is None
+
+    def test_thumbnail_size_diverso_con_derivato_nello_store_serve_lo_store(self, client_with_photo, store):
+        import os
+        c, pid, photo_path = client_with_photo
+        store.scrivi(pid, "thumb", b"finto")
+        os.remove(photo_path)
+        resp = c.get(f"/api/photos/{pid}/thumbnail?size=160")
+        assert resp.status_code == 200
+        assert resp.content == b"finto"
+
+    def test_proxy_servito_dallo_store_non_tocca_il_file(self, client_with_photo, store):
+        import os
+        c, pid, photo_path = client_with_photo
+        store.scrivi(pid, "proxy", b"finto-proxy")
+        os.remove(photo_path)
+        resp = c.get(f"/api/photos/{pid}/proxy")
+        assert resp.status_code == 200
+        assert resp.content == b"finto-proxy"
+        assert resp.headers["content-type"] == "image/jpeg"
+        assert resp.headers["cache-control"] == "max-age=86400"
+
+    def test_proxy_assente_viene_generato_e_memorizzato(self, client_with_photo, store):
+        import io
+        c, pid, _ = client_with_photo
+        resp = c.get(f"/api/photos/{pid}/proxy")
+        assert resp.status_code == 200
+        Image.open(io.BytesIO(resp.content)).verify()
+        assert store.leggi(pid, "proxy") == resp.content
+        assert store.leggi(pid, "thumb") is None
+
+    def test_proxy_di_foto_senza_file_e_senza_derivato_da_404(self, client_with_photo, store):
+        import os
+        c, pid, photo_path = client_with_photo
+        os.remove(photo_path)
+        assert c.get(f"/api/photos/{pid}/proxy").status_code == 404
+
+    def test_proxy_di_foto_inesistente_da_404(self, client_with_photo, store):
+        c, pid, _ = client_with_photo
+        assert c.get(f"/api/photos/{pid + 1}/proxy").status_code == 404
+
+    def test_la_lettura_dallo_store_non_occupa_uno_slot_la_generazione_si(self, client_with_photo, store, monkeypatch):
+        import api.photos as m
+
+        class Contatore:
+            entrate = 0
+            def __enter__(self):
+                Contatore.entrate += 1
+            def __exit__(self, *a):
+                return False
+
+        monkeypatch.setattr(m, "_thumbnail_slots", Contatore())
+        c, pid, _ = client_with_photo
+        store.scrivi(pid, "thumb", b"finto")
+        assert c.get(f"/api/photos/{pid}/thumbnail").status_code == 200
+        assert Contatore.entrate == 0
+        assert c.get(f"/api/photos/{pid}/proxy").status_code == 200
+        assert Contatore.entrate == 1
+
+    def test_scrittura_fallita_dello_store_non_fa_fallire_la_richiesta(self, client_with_photo, store, monkeypatch):
+        def piena(*a, **k):
+            raise OSError(28, "No space left on device")
+        monkeypatch.setattr(store, "scrivi", piena)
+        c, pid, _ = client_with_photo
+        for tipo in ("thumbnail", "proxy"):
+            resp = c.get(f"/api/photos/{pid}/{tipo}")
+            assert resp.status_code == 200
+            assert resp.content[:2] == b"\xff\xd8"
+
+    def test_generazione_fallita_resta_un_errore(self, client_with_photo, store, monkeypatch):
+        import api.photos as m
+        def rotta(*a, **k):
+            raise RuntimeError("decodifica fallita")
+        monkeypatch.setattr(m, "generate_thumbnail", rotta)
+        c, pid, _ = client_with_photo
+        with pytest.raises(RuntimeError):
+            c.get(f"/api/photos/{pid}/thumbnail")

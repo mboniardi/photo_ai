@@ -17,7 +17,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 from services.ai.base import AIEngine
-from services.image_processor import prepare_for_ai
+from services.image_processor import prepare_for_ai_da_store
 from database.queue import (
     get_next_pending, update_queue_status,
     increment_attempts, get_queue_item, reset_stale_processing,
@@ -154,8 +154,10 @@ class QueueWorker:
 
         try:
             # Prepara immagine per AI (risoluzione dipende dall'engine)
-            image_bytes = prepare_for_ai(photo["file_path"],
-                                         max_side_px=self._engine.max_side_px)
+            # Dal proxy nello store, con l'originale come ripiego: le foto
+            # solo-Google non hanno un file da aprire.
+            image_bytes = prepare_for_ai_da_store(
+                photo_id, photo["file_path"], max_side_px=self._engine.max_side_px)
 
             # Location hint: nome luogo noto + coordinate GPS se disponibili
             parts = []
@@ -282,8 +284,9 @@ class QueueWorker:
         immagini = []
         for f in campiona(gruppo, config.GROUP_CAMPIONE_LUOGO):
             try:
-                immagini.append(prepare_for_ai(
-                    f["file_path"], max_side_px=config.GROUP_LUOGO_MAX_SIDE_PX))
+                immagini.append(prepare_for_ai_da_store(
+                    f["photo_id"], f["file_path"],
+                    max_side_px=config.GROUP_LUOGO_MAX_SIDE_PX))
             except Exception as exc:
                 logger.warning("Immagine illeggibile nel campione: %s (%s)", f["file_path"], exc)
         if not immagini:
@@ -476,8 +479,9 @@ class QueueWorker:
                 update_queue_status(self._db_path, f["queue_id"], "processing")
             self.current_photo_name = "%d foto · %s" % (len(blocco), nome_luogo)
             try:
-                immagini = [prepare_for_ai(f["file_path"],
-                                           max_side_px=self._engine.max_side_px)
+                immagini = [prepare_for_ai_da_store(
+                                f["photo_id"], f["file_path"],
+                                max_side_px=self._engine.max_side_px)
                             for f in blocco]
                 analisi = await self._engine.analyze_group(immagini, nome_luogo, lat, lon)
                 if len(analisi) != len(blocco):

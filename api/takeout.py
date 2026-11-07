@@ -5,11 +5,13 @@ import os
 from typing import List
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import config
 from database.photos import get_photo_id_by_path, update_photo
-from database import get_db
+from database import get_db, doppioni
+from services import takeout_import
+from services.takeout_import import coordinate_vincono
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +61,10 @@ class ImportRequest(BaseModel):
 def import_takeout_coords(req: ImportRequest = ImportRequest()):
     """
     Legge i JSON di Takeout salvati e aggiorna latitude/longitude nel DB.
-    Con force=True sovrascrive anche le foto che hanno già coordinate.
+    Con force=True sovrascrive anche le foto che hanno gia' coordinate, ma
+    MAI una posizione `exif`, `manual` o `corrected`: sono dati certi o
+    corretti a mano, e disfarli e' l'anti-obiettivo numero uno del progetto.
+    Force puo' solo sostituire un'ipotesi dell'AI o un Takeout precedente.
     Abbina per nome file (title nel JSON).
     """
     if not os.path.isdir(config.TAKEOUT_JSON_PATH):
@@ -68,16 +73,20 @@ def import_takeout_coords(req: ImportRequest = ImportRequest()):
     updated = 0
     skipped_no_coords = 0
     skipped_already_has = 0
+    skipped_protected = 0
     not_found = 0
     errors = 0
 
     # Costruisce indice filename → photo_id dal DB (case-insensitive)
     with get_db(config.LOCAL_DB) as conn:
         rows = conn.execute(
-            "SELECT id, filename, latitude FROM photos WHERE is_trash = 0 OR is_trash IS NULL"
+            "SELECT id, filename, latitude, location_source FROM photos "
+            "WHERE is_trash = 0 OR is_trash IS NULL"
         ).fetchall()
     # Indice lowercase per matching case-insensitive
-    db_index = {row["filename"].lower(): (row["id"], row["latitude"]) for row in rows}
+    db_index = {row["filename"].lower(): (row["id"], row["latitude"],
+                                          row["location_source"])
+                for row in rows}
 
     for fname in os.listdir(config.TAKEOUT_JSON_PATH):
         if not fname.endswith(".json"):
@@ -103,7 +112,12 @@ def import_takeout_coords(req: ImportRequest = ImportRequest()):
                 logger.debug("Takeout JSON '%s' → title '%s' non trovato nel DB", fname, title)
                 continue
 
-            photo_id, existing_lat = db_index[title_lower]
+            photo_id, existing_lat, existing_source = db_index[title_lower]
+            # Precedenza: la stessa di services.takeout_import. Nemmeno force
+            # tocca exif/manual/corrected.
+            if not coordinate_vincono(existing_source):
+                skipped_protected += 1
+                continue
             if existing_lat is not None and not req.force:
                 skipped_already_has += 1
                 continue
@@ -121,6 +135,64 @@ def import_takeout_coords(req: ImportRequest = ImportRequest()):
         "updated": updated,
         "skipped_no_coords": skipped_no_coords,
         "skipped_already_has": skipped_already_has,
+        "skipped_protected": skipped_protected,
         "not_found": not_found,
         "errors": errors,
     }
+
+
+class ImportaAlbumRequest(BaseModel):
+    zip_paths: List[str] = Field(min_length=1)
+    # Importa anche se la passata delle impronte non e' finita: da usare solo
+    # quando le foto rimaste senza impronta sono file illeggibili.
+    forza: bool = False
+
+
+def _percorso_consentito(percorso: str) -> bool:
+    """True se il file esiste e, risolti symlink e "..", sta sotto una radice ammessa."""
+    reale = os.path.realpath(percorso)
+    if not os.path.isfile(reale):
+        return False
+    for radice in (config.PHOTOS_PATH, config.APP_DATA_PATH):
+        radice_reale = os.path.realpath(radice)
+        if os.path.commonpath([reale, radice_reale]) == radice_reale:
+            return True
+    return False
+
+
+@router.post("/importa-album")
+def importa_album(req: ImportaAlbumRequest):
+    """
+    Importa gli ZIP di un album Google Takeout: coordinate alle foto gia' nel
+    catalogo, nuove voci (solo derivati) per quelle che esistono solo su Google.
+    Gli ZIP non vengono cancellati: il risultato ne riporta i percorsi.
+    """
+    # I percorsi arrivano dal client: devono stare sotto la NAS o i dati app.
+    for percorso in req.zip_paths:
+        if not _percorso_consentito(percorso):
+            raise HTTPException(status_code=400,
+                                detail=f"Percorso non valido o non consentito: {percorso}")
+    return takeout_import.importa_album(
+        [os.path.realpath(p) for p in req.zip_paths], config.LOCAL_DB,
+        forza=req.forza)
+
+
+class RisolviDoppioneRequest(BaseModel):
+    stessa_foto: bool
+
+
+@router.get("/doppioni")
+def elenca_doppioni():
+    """Doppioni sospetti ancora da decidere, con le due foto affiancate."""
+    return doppioni.elenca_sospetti(config.LOCAL_DB)
+
+
+@router.post("/doppioni/{sospetto_id}")
+def risolvi_doppione(sospetto_id: int, req: RisolviDoppioneRequest):
+    """Decide un sospetto: stessa foto (unisce) o foto diverse (resta e va in coda AI)."""
+    try:
+        return doppioni.risolvi(config.LOCAL_DB, sospetto_id, req.stessa_foto)
+    except doppioni.SospettoNonTrovato as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except doppioni.SospettoGiaRisolto as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
