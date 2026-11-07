@@ -36,6 +36,12 @@ def _stato(db, sid):
                             (sid,)).fetchone()["stato"]
 
 
+def _righe_sospetti(db, sid):
+    with get_db(db) as conn:
+        return conn.execute("SELECT * FROM doppioni_sospetti WHERE id = ?",
+                            (sid,)).fetchall()
+
+
 def _in_coda(db, pid):
     with get_db(db) as conn:
         return conn.execute("SELECT COUNT(*) AS n FROM analysis_queue WHERE photo_id = ?",
@@ -59,7 +65,7 @@ def test_confermare_cancella_la_riga_google_e_i_derivati(coppia):
     assert derivati.leggi(g, "thumb") is None
     assert derivati.leggi(g, "proxy") is None
     assert get_photo_by_id(db, n) is not None
-    assert _stato(db, sid) == "risolto"
+    assert _righe_sospetti(db, sid) == []
 
 
 def test_confermare_passa_le_coordinate_alla_riga_nas(coppia):
@@ -128,12 +134,27 @@ def test_errore_a_meta_non_lascia_il_sospetto_risolto(coppia):
     assert derivati.leggi(g, "thumb") == b"x"
 
 
-def test_confermare_chiude_gli_altri_sospetti_sulla_stessa_foto_google(coppia):
+def test_confermare_cancella_tutti_i_sospetti_sulla_stessa_foto_google(coppia):
     db, g, n, sid = coppia
     n2 = _foto(db, "n2.jpg", "nas")
     altro = _sospetto(db, g, n2)
     doppioni.risolvi(db, sid, True)
-    assert _stato(db, altro) != "pending"
+    assert _righe_sospetti(db, sid) == []
+    assert _righe_sospetti(db, altro) == []
+
+
+def test_confermare_lascia_il_database_integro(coppia):
+    db, g, n, sid = coppia
+    doppioni.risolvi(db, sid, True)
+    with get_db(db) as conn:
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
+def test_confermare_due_volte_non_agisce_di_nuovo(coppia):
+    db, g, n, sid = coppia
+    doppioni.risolvi(db, sid, True)
+    with pytest.raises(doppioni.SospettoNonTrovato):
+        doppioni.risolvi(db, sid, True)
 
 
 def test_elenca_mostra_solo_i_pendenti(coppia):

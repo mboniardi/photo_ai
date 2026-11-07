@@ -49,13 +49,11 @@ def risolvi(db_path: Optional[str], sospetto_id: int, stessa_foto: bool) -> dict
     Un sospetto si risolve una volta sola; un errore annulla tutto.
     """
     with get_db(db_path) as conn:
-        # Con le chiavi esterne attive la riga Google non si potrebbe togliere
-        # finche' il sospetto la cita, e il sospetto resta come traccia della
-        # decisione. Il pragma vale solo fuori da una transazione.
-        conn.execute("PRAGMA foreign_keys=OFF")
         nuovo_stato = "risolto" if stessa_foto else "respinto"
         # Prenotazione atomica: solo chi la vince prosegue (due click, due
-        # richieste insieme). La scrittura apre la transazione.
+        # richieste insieme). La scrittura apre la transazione; con
+        # stessa_foto la riga prenotata viene poi cancellata nella stessa
+        # transazione, quindi chi arriva dopo trova 404 invece di 409.
         preso = conn.execute(
             "UPDATE doppioni_sospetti SET stato = ? WHERE id = ? AND stato = 'pending'",
             (nuovo_stato, sospetto_id),
@@ -93,10 +91,11 @@ def risolvi(db_path: Optional[str], sospetto_id: int, stessa_foto: bool) -> dict
                     (google["latitude"], google["longitude"], nas["id"]),
                 )
                 coordinate = True
-            # Gli altri sospetti sulla stessa foto Google non hanno piu' oggetto.
+            # Asimmetria voluta: con la riga Google cancellata il sospetto non ha
+            # piu' un soggetto (e la chiave esterna lo vieterebbe), quindi si
+            # cancella con tutti gli altri sulla stessa foto; 'respinto' resta.
             conn.execute(
-                "UPDATE doppioni_sospetti SET stato = 'obsoleto' "
-                "WHERE photo_id_google = ? AND stato = 'pending'",
+                "DELETE FROM doppioni_sospetti WHERE photo_id_google = ?",
                 (google["id"],),
             )
             conn.execute("DELETE FROM analysis_queue WHERE photo_id = ?", (google["id"],))
