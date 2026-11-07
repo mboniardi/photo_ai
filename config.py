@@ -156,3 +156,14 @@ GROUP_LUOGO_MAX_SIDE_PX: int = int(os.environ.get("GROUP_LUOGO_MAX_SIDE_PX", "32
 # insieme si accontenta di 246 caratteri.
 GROUP_DESCRIZIONE_MIN_CARATTERI: int = int(
     os.environ.get("GROUP_DESCRIZIONE_MIN_CARATTERI", "350"))
+
+
+# ── Store dei derivati (thumb + proxy) ──────────────────────────────────
+# Cache rigenerabile: ogni foto ha un padrone altrove (NAS o Google), quindi
+# questa directory non va nel backup. Protetto e' solo il database.
+# ATTENZIONE: deve stare sul disco della VM, accanto a LOCAL_DB, NON sotto
+# APP_DATA_PATH che punta alla NAS (/mnt/nas/photo_ai_data). Servire ogni
+# riquadro della griglia dalla rete vanificherebbe tutto il lavoro.
+DERIVATI_PATH: str = os.environ.get("DERIVATI_PATH", "/opt/photo_ai/data/derivati")
+PROXY_SIZE: int = int(os.environ.get("PROXY_SIZE", 2048))
+PROXY_QUALITY: int = int(os.environ.get("PROXY_QUALITY", 85))
