@@ -171,3 +171,24 @@ def test_elenca_mostra_solo_i_pendenti(coppia):
     assert (e["album_google"], e["album_nas"]) == ("google:/Vacanza", "/mnt/nas")
     assert (e["motivo"], e["distanza"]) == ("istante", 3)
     assert [x["id"] for x in doppioni.elenca_sospetti(db, "respinto")] == [risolto]
+
+
+def test_respingere_non_accoda_finche_resta_un_altro_sospetto_pendente(coppia):
+    db, g, n, sid = coppia
+    n2 = _foto(db, "n2.jpg", "nas")
+    altro = _sospetto(db, g, n2)
+    doppioni.risolvi(db, sid, False)
+    assert _in_coda(db, g) == 0
+    doppioni.risolvi(db, altro, False)
+    assert _in_coda(db, g) == 1
+
+
+def test_un_errore_nella_pulizia_dei_derivati_non_annulla_la_fusione(coppia, monkeypatch):
+    db, g, n, sid = coppia
+
+    def boom(_):
+        raise OSError("disco")
+    monkeypatch.setattr(derivati, "cancella", boom)
+    esito = doppioni.risolvi(db, sid, True)
+    assert esito["stessa_foto"] is True
+    assert get_photo_by_id(db, g) is None

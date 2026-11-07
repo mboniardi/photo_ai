@@ -5,11 +5,14 @@ L'import registra qui i casi in cui non sa decidere se una foto dell'archivio
 sia gia' nel catalogo. Unire due foto diverse ne perderebbe una per sempre,
 tenerne una in piu' costa poco: la decisione spetta a chi guarda.
 """
+import logging
 from typing import Optional
 
 from database import get_db
 from services import derivati
 from services.takeout_import import coordinate_vincono
+
+logger = logging.getLogger(__name__)
 
 
 class SospettoNonTrovato(LookupError):
@@ -101,8 +104,14 @@ def risolvi(db_path: Optional[str], sospetto_id: int, stessa_foto: bool) -> dict
             conn.execute("DELETE FROM analysis_queue WHERE photo_id = ?", (google["id"],))
             conn.execute("DELETE FROM photos WHERE id = ?", (google["id"],))
         else:
+            # Finche' un altro sospetto pendente cita la stessa foto Google e'
+            # ancora incerta: l'analisi AI costa, si paga solo a dubbi chiusi.
+            altri_pendenti = conn.execute(
+                "SELECT 1 FROM doppioni_sospetti "
+                "WHERE photo_id_google = ? AND stato = 'pending'", (google["id"],)
+            ).fetchone()
             # Stessa regola di add_to_queue: niente doppioni in coda.
-            if not conn.execute(
+            if not altri_pendenti and not conn.execute(
                 "SELECT 1 FROM analysis_queue WHERE photo_id = ? "
                 "AND status IN ('pending', 'processing')", (google["id"],)
             ).fetchone():
@@ -112,6 +121,10 @@ def risolvi(db_path: Optional[str], sospetto_id: int, stessa_foto: bool) -> dict
 
     # I file non si annullano con la transazione: si toccano solo a commit fatto.
     if stessa_foto:
-        derivati.cancella(google["id"])
+        try:
+            derivati.cancella(google["id"])
+        except OSError as exc:
+            # La fusione e' gia' avvenuta: i file rimasti sono solo spazio.
+            logger.warning("Derivati della foto %s non cancellati: %s", google["id"], exc)
     return {"id": sospetto_id, "stato": nuovo_stato,
             "stessa_foto": stessa_foto, "coordinate_passate": coordinate}

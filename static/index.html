@@ -2469,7 +2469,7 @@ createApp({
         return;
       }
       caso.busy = false;
-      if (resp && resp.status === 409) {
+      if (resp && (resp.status === 409 || resp.status === 404)) {
         doppAvviso.value = 'Already decided elsewhere; list refreshed.';
         await loadDoppioni();
       } else {
