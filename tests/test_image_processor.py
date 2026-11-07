@@ -277,3 +277,80 @@ class TestDecodeAtReducedScale:
 
         assert visto, "exif_transpose non chiamata"
         assert max(visto[0]) <= 1024, f"la rotazione riceve l'immagine a {visto[0]}"
+
+
+class TestGenerateProxy:
+    def test_proxy_rispetta_il_lato_lungo(self, tmp_path):
+        """Proxy a 2048 px sul lato lungo (default config.PROXY_SIZE)."""
+        from services.image_processor import generate_proxy
+        path = str(tmp_path / "grande.jpg")
+        Image.new("RGB", (6000, 4000)).save(path, "JPEG")
+        img = Image.open(io.BytesIO(generate_proxy(path)))
+        assert max(img.size) == 2048
+
+    def test_proxy_non_ingrandisce(self, tmp_path):
+        """Immagine già più piccola del proxy: dimensioni invariate."""
+        from services.image_processor import generate_proxy
+        path = str(tmp_path / "piccola.jpg")
+        Image.new("RGB", (800, 600)).save(path, "JPEG")
+        img = Image.open(io.BytesIO(generate_proxy(path)))
+        assert img.size == (800, 600)
+
+    def test_result_is_valid_jpeg(self, tmp_path):
+        from services.image_processor import generate_proxy
+        path = str(tmp_path / "test.jpg")
+        Image.new("RGB", (800, 600)).save(path, "JPEG")
+        img = Image.open(io.BytesIO(generate_proxy(path)))
+        assert img.format == "JPEG"
+
+    def test_custom_size(self, tmp_path):
+        from services.image_processor import generate_proxy
+        path = str(tmp_path / "test.jpg")
+        Image.new("RGB", (800, 600)).save(path, "JPEG")
+        img = Image.open(io.BytesIO(generate_proxy(path, size=300)))
+        assert max(img.size) == 300
+
+    def test_default_quality_is_config_proxy_quality(self, tmp_path, monkeypatch):
+        """Senza quality esplicita il proxy usa config.PROXY_QUALITY, letto a runtime."""
+        import config
+        import services.image_processor as m
+        seen = []
+        real_encode = m._encode_jpeg
+        def spia(img, quality):
+            seen.append(quality)
+            return real_encode(img, quality)
+        monkeypatch.setattr(m, "_encode_jpeg", spia)
+        monkeypatch.setattr(config, "PROXY_QUALITY", 37)
+        path = str(tmp_path / "test.jpg")
+        Image.new("RGB", (800, 600)).save(path, "JPEG")
+        m.generate_proxy(path)
+        assert seen == [37]
+
+    def test_rotation_happens_after_the_resize(self, tmp_path, monkeypatch):
+        """Stesso ordine di generate_thumbnail: la rotazione EXIF riceve
+        un'immagine già ridotta, non la decodifica a piena risoluzione."""
+        from PIL import ImageOps
+        import services.image_processor as m
+        visto = []
+        vero = ImageOps.exif_transpose
+        def spia(img, **kw):
+            visto.append(img.size)
+            return vero(img, **kw)
+        monkeypatch.setattr(m.ImageOps, "exif_transpose", spia)
+        path = str(tmp_path / "grande.jpg")
+        Image.new("RGB", (6000, 4000)).save(path, "JPEG", quality=70)
+
+        m.generate_proxy(path, size=800)
+
+        assert visto, "exif_transpose non chiamata"
+        assert max(visto[0]) <= 800, (
+            f"la rotazione riceve l'immagine a {visto[0]}: decodificata a piena risoluzione")
+
+    def test_orientation_is_applied(self, tmp_path):
+        import piexif
+        from services.image_processor import generate_proxy
+        path = str(tmp_path / "ruotata.jpg")
+        Image.new("RGB", (800, 400), (10, 20, 30)).save(path, "JPEG")
+        piexif.insert(piexif.dump({"0th": {piexif.ImageIFD.Orientation: 6}}), path)
+        img = Image.open(io.BytesIO(generate_proxy(path)))
+        assert img.height > img.width, f"orientamento perso: {img.size}"

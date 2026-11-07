@@ -5,6 +5,7 @@ Funzioni principali:
   open_any_format(path)         → PIL.Image  (JPG, PNG, HEIC, RAW)
   prepare_for_ai(path)          → bytes JPEG ottimizzati per LLM
   generate_thumbnail(path, size) → bytes JPEG thumbnail UI
+  generate_proxy(path, size)     → bytes JPEG proxy 2048px (lightbox, AI)
 
 Nessun file mai scritto su disco (§10 "Thumbnail generate in memoria").
 """
@@ -139,6 +140,38 @@ def generate_thumbnail(
         img = img.convert("RGB")
 
     return _encode_jpeg(img, thumb_quality)
+
+
+def generate_proxy(
+    image_path: str,
+    size: Optional[int] = None,
+    quality: Optional[int] = None,
+) -> bytes:
+    """
+    Genera il proxy JPEG (copia di lavoro più grande della thumbnail).
+    Il lightbox lo mostra e l'AI lo analizza: DeepSeek non vede mai più di
+    1024 px, quindi 2048 copre entrambi e permette di rianalizzare una foto
+    anche dopo che l'originale non è più su disco.
+    - Lato lungo massimo: size (default config.PROXY_SIZE = 2048px)
+    - Qualità: config.PROXY_QUALITY (default 85%)
+    - Mai upscale: immagini già piccole restano invariate
+
+    Ritorna i byte JPEG. MAI scrive su disco.
+    """
+    proxy_size = size or config.PROXY_SIZE
+    proxy_quality = quality or config.PROXY_QUALITY
+
+    img = open_any_format(image_path)
+
+    # Stesso ordine di generate_thumbnail: thumbnail() prima, rotazione EXIF
+    # dopo (vedi prepare_for_ai per il motivo).
+    img.thumbnail((proxy_size, proxy_size), Image.LANCZOS)
+    img = ImageOps.exif_transpose(img)
+
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+
+    return _encode_jpeg(img, proxy_quality)
 
 
 # ── Helpers privati ───────────────────────────────────────────────
