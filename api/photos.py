@@ -12,6 +12,7 @@ from database.photos import (
     bulk_set_location, get_photo_ids_for_selection,
 )
 from services import derivati
+from services.impronta_batch import calcola_mancanti
 from services.image_processor import generate_thumbnail, generate_proxy
 import config
 
@@ -41,6 +42,16 @@ class BulkLocationRequest(BaseModel):
     longitude: float = Field(ge=-180, le=180)
     location_name: Optional[str] = None
     overwrite: bool = False
+
+
+class ImprontaRequest(BaseModel):
+    limite: int = Field(default=500, ge=1, le=10000)
+
+
+@router.post("/impronte")
+def calcola_impronte(body: ImprontaRequest):
+    """Calcola le impronte mancanti (senza generare proxy)."""
+    return calcola_mancanti(None, body.limite)
 
 
 @router.get("")

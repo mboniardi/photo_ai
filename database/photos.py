@@ -446,3 +446,24 @@ def mark_location_confirmed(db_path: Optional[str] = None,
             list(photo_ids),
         )
         return cur.rowcount
+
+
+_SENZA_IMPRONTA = "phash IS NULL AND (is_trash = 0 OR is_trash IS NULL)"
+
+
+def foto_senza_impronta(db_path: Optional[str] = None,
+                        limite: int = 500) -> list:
+    """Le foto non nel cestino che non hanno ancora l'impronta, per id."""
+    with get_db(db_path) as conn:
+        return conn.execute(
+            f"SELECT id, file_path FROM photos WHERE {_SENZA_IMPRONTA} "
+            "ORDER BY id LIMIT ?", (limite,)
+        ).fetchall()
+
+
+def conta_foto_senza_impronta(db_path: Optional[str] = None) -> int:
+    """Quante foto non nel cestino sono ancora senza impronta."""
+    with get_db(db_path) as conn:
+        return conn.execute(
+            f"SELECT COUNT(*) FROM photos WHERE {_SENZA_IMPRONTA}"
+        ).fetchone()[0]

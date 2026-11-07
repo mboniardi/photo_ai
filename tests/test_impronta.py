@@ -109,3 +109,8 @@ def test_simili_rifiuta_impronte_malformate():
         impronta.simili("abc", [(1, "0" * 16)], 4)
     with pytest.raises(ValueError):
         impronta.simili("0" * 16, [(1, "xyz")], 4)
+
+
+def test_matrice_dct_e_ortonormale():
+    # Il confronto con la mediana e' invariante di scala: senza questo test una normalizzazione sbagliata passerebbe inosservata.
+    assert np.allclose(impronta._DCT @ impronta._DCT.T, np.eye(impronta._LATO))
