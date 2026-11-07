@@ -123,7 +123,7 @@ def risolvi(db_path: Optional[str], sospetto_id: int, stessa_foto: bool) -> dict
     if stessa_foto:
         try:
             derivati.cancella(google["id"])
-        except OSError as exc:
+        except Exception as exc:
             # La fusione e' gia' avvenuta: i file rimasti sono solo spazio.
             logger.warning("Derivati della foto %s non cancellati: %s", google["id"], exc)
     return {"id": sospetto_id, "stato": nuovo_stato,
