@@ -16,7 +16,10 @@ from fastapi import HTTPException
 
 import config
 from database import get_db
-from database.photos import (conta_foto_senza_impronta, delete_photo_by_path,
+from database.folders import (get_folder_by_path, insert_folder,
+                              update_folder_counts)
+from database.photos import (conta_foto_senza_impronta, count_photos,
+                             delete_photo_by_path,
                              get_photo_by_id, get_photo_id_by_path,
                              insert_photo, update_photo)
 from database.queue import add_to_queue
@@ -67,13 +70,35 @@ def _arricchisci(db_path: str, photo_id: int, voce) -> bool:
     return True
 
 
+def _nome_album(voce) -> str:
+    """L'album e' l'ultima cartella del percorso: "Takeout/Google Foto/Vacanza"
+    diventa "Vacanza" (il prefisso cambia con la lingua dell'account)."""
+    return os.path.basename(voce.album.rstrip("/\\")) or voce.album
+
+
+def _assicura_cartella(db_path: str, album: str) -> None:
+    """Crea la riga in `folders` per l'album di Google e ne aggiorna i conteggi.
+
+    Senza questa riga l'album non esiste per la barra laterale: GET
+    /api/folders seleziona FROM folders, e le foto resterebbero visibili solo
+    nella griglia non filtrata. `folder_path` e' "google:/<album>", che non e'
+    una directory: scan e rescan lo rifiutano gia' da soli (os.path.isdir).
+    """
+    percorso = f"google:/{album}"
+    if get_folder_by_path(db_path, percorso) is None:
+        insert_folder(db_path, folder_path=percorso, display_name=album)
+    update_folder_counts(
+        db_path, percorso,
+        photo_count=count_photos(db_path, folder_path=percorso, is_trash=False),
+        analyzed_count=count_photos(db_path, folder_path=percorso,
+                                    analyzed_only=True, is_trash=False))
+
+
 def _inserisci_google(db_path: str, voce, meta: dict, phash: str,
                       thumb: bytes, proxy: bytes) -> int:
     """Inserisce la foto solo-Google con i suoi derivati. Se qualcosa va storto
     dopo l'inserimento toglie la riga e i file: niente voci vuote."""
-    # L'album e' l'ultima cartella del percorso: "Takeout/Google Foto/Vacanza"
-    # diventa "Vacanza" (il prefisso cambia con la lingua dell'account).
-    album = os.path.basename(voce.album.rstrip("/\\")) or voce.album
+    album = _nome_album(voce)
     file_path = f"google:/{album}/{voce.nome}"
     if get_photo_id_by_path(db_path, file_path) is not None:
         raise ValueError(f"Esiste gia' una foto con percorso {file_path}")
@@ -173,18 +198,30 @@ def importa_album(zip_paths: list, db_path: Optional[str] = None,
         _controlla_spazio(len(contenuto.voci))
         indice = costruisci_indice(db_path)
 
+        album_con_foto = set()
         for voce in contenuto.voci:
             try:
-                _elabora(db_path, voce, indice, r)
+                _elabora(db_path, voce, indice, r, album_con_foto)
             except Exception as exc:
                 logger.warning("Import di %s/%s fallito: %s", voce.album, voce.nome, exc)
                 r["errori"] += 1
+
+        # Solo gli album che hanno almeno una riga Google: se erano tutte gia'
+        # nel catalogo non c'e' nessuna foto "google:/<album>" da mostrare, e
+        # la cartella sarebbe vuota.
+        for album in sorted(album_con_foto):
+            try:
+                _assicura_cartella(db_path, album)
+            except Exception as exc:
+                # Le foto sono dentro: una barra laterale incompleta non vale
+                # un import fallito. Resta nel log.
+                logger.warning("Cartella dell'album %s non creata: %s", album, exc)
     finally:
         shutil.rmtree(lavoro, ignore_errors=True)
     return r
 
 
-def _elabora(db_path: str, voce, indice, r: dict) -> None:
+def _elabora(db_path: str, voce, indice, r: dict, album_con_foto: set) -> None:
     meta = read_exif(voce.percorso_file)
     img = image_processor.open_any_format(voce.percorso_file)
     try:
@@ -239,6 +276,10 @@ def _elabora(db_path: str, voce, indice, r: dict) -> None:
     else:
         _aggiungi_all_indice(indice, photo_id, phash, meta, voce)
         r["nuove"] += 1
+
+    # Solo ora: se il passo precedente fosse fallito, `_annulla` avrebbe tolto
+    # la riga e l'album potrebbe restare senza nemmeno una foto.
+    album_con_foto.add(_nome_album(voce))
 
 
 def _annulla(db_path: str, photo_id: int) -> None:

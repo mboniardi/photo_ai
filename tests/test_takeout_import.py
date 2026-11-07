@@ -486,6 +486,72 @@ def test_lo_spazio_si_misura_sulla_cartella_dei_derivati(
     assert os.path.exists(viste[0]) and derivati_tmp.startswith(viste[0])
 
 
+# ── l'album di Google diventa un album del catalogo ───────────────
+
+def test_l_album_diventa_una_cartella_del_catalogo(tmp_db, album, derivati_tmp):
+    """
+    Senza una riga in `folders` l'album non compare nella barra laterale:
+    GET /api/folders seleziona FROM folders, e le foto esisterebbero solo
+    nella griglia non filtrata.
+    """
+    cartella, zippa = album
+    _scrivi_foto(cartella, "a.jpg", 1)
+    importa_album([zippa()], tmp_db)
+    righe = _righe(tmp_db, "SELECT * FROM folders")
+    assert len(righe) == 1
+    assert righe[0]["folder_path"] == "google:/Vacanza"
+    assert righe[0]["display_name"] == "Vacanza"
+    assert righe[0]["photo_count"] == 1
+    assert righe[0]["analyzed_count"] == 0
+
+
+def test_due_album_nello_stesso_archivio_danno_due_cartelle(tmp_db, tmp_path, derivati_tmp):
+    a, b = tmp_path / "A", tmp_path / "B"
+    a.mkdir(), b.mkdir()
+    _scrivi_foto(str(a), "x.jpg", 1)
+    _scrivi_foto(str(b), "y.jpg", 2)
+    percorso_zip = str(tmp_path / "due.zip")
+    with zipfile.ZipFile(percorso_zip, "w") as zf:
+        for album_, cart in (("Uno", a), ("Due", b)):
+            for nome in os.listdir(cart):
+                zf.write(cart / nome, f"Takeout/Google Foto/{album_}/{nome}")
+    importa_album([percorso_zip], tmp_db)
+    percorsi = sorted(x["folder_path"] for x in _righe(tmp_db, "SELECT * FROM folders"))
+    assert percorsi == ["google:/Due", "google:/Uno"]
+
+
+def test_un_secondo_import_dello_stesso_album_non_duplica_la_cartella(
+        tmp_db, album, derivati_tmp):
+    cartella, zippa = album
+    _scrivi_foto(cartella, "a.jpg", 1)
+    importa_album([zippa()], tmp_db)
+    _scrivi_foto(cartella, "b.jpg", 2)
+    r = importa_album([zippa()], tmp_db)
+    assert r["errori"] == 0
+    righe = _righe(tmp_db, "SELECT * FROM folders")
+    assert len(righe) == 1 and righe[0]["photo_count"] == 2
+
+
+def test_una_foto_incerta_fa_comunque_la_cartella(tmp_db, album, derivati_tmp, monkeypatch):
+    cartella, zippa = album
+    _scrivi_foto(cartella, "a.jpg", 1)
+    nas = _foto_nas(tmp_db, 99)
+    monkeypatch.setattr(takeout_import, "decidi",
+                        lambda *a, **k: Esito("incerta", nas, None, 9))
+    importa_album([zippa()], tmp_db)
+    assert [x["folder_path"] for x in _righe(tmp_db, "SELECT * FROM folders")] \
+        == ["google:/Vacanza"]
+
+
+def test_un_album_senza_foto_nuove_non_crea_una_cartella_vuota(tmp_db, album, derivati_tmp):
+    cartella, zippa = album
+    _scrivi_foto(cartella, "a.jpg", 1)
+    _foto_nas(tmp_db, 1)
+    r = importa_album([zippa()], tmp_db)
+    assert r["gia_presenti"] == 1 and r["nuove"] == 0
+    assert _righe(tmp_db, "SELECT * FROM folders") == []
+
+
 # ── passata di impronte ───────────────────────────────────────────
 
 def _foto_senza_impronta(db, nome="vecchia.jpg", exif_date=None):
@@ -607,3 +673,31 @@ def test_la_rotta_rifiuta_se_mancano_le_impronte(client, tmp_path):
     assert resp.status_code == 200, resp.text
     assert resp.json()["senza_impronta"] == 1
     assert resp.json()["nuove"] == 1
+
+
+
+def test_la_cartella_google_compare_fra_le_cartelle(client, tmp_path):
+    c, db = client
+    sorgente = tmp_path / "src3"
+    sorgente.mkdir()
+    _scrivi_foto(str(sorgente), "a.jpg", 1)
+    percorso_zip = _zip_di(str(sorgente), tmp_path / "nas" / "c.zip")
+    assert c.post("/api/takeout/importa-album",
+                  json={"zip_paths": [percorso_zip]}).status_code == 200
+    cartelle = c.get("/api/folders").json()
+    assert [f["folder_path"] for f in cartelle] == ["google:/Vacanza"]
+    assert cartelle[0]["photo_count"] == 1
+
+
+def test_la_cartella_google_non_si_puo_scansionare(client, tmp_path):
+    """`google:/...` non e' una directory: scan e rescan devono rifiutarla."""
+    c, db = client
+    sorgente = tmp_path / "src4"
+    sorgente.mkdir()
+    _scrivi_foto(str(sorgente), "a.jpg", 1)
+    percorso_zip = _zip_di(str(sorgente), tmp_path / "nas" / "d.zip")
+    c.post("/api/takeout/importa-album", json={"zip_paths": [percorso_zip]})
+    assert c.post("/api/folders/scan",
+                  json={"folder_path": "google:/Vacanza"}).status_code == 400
+    assert c.post("/api/folders/rescan",
+                  json={"folder_path": "google:/Vacanza"}).status_code == 400
