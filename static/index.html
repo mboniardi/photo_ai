@@ -973,7 +973,7 @@
           <img
             v-if="lightbox.photo"
             class="lightbox-img"
-            :src="`/api/photos/${lightbox.photo.id}/image`"
+            :src="`/api/photos/${lightbox.photo.id}/proxy`"
             :alt="lightbox.photo.filename"
           />
         </div>
@@ -1121,11 +1121,16 @@
             <button class="lb-action-btn" @click="reanalyze">⚡ Re-analyze</button>
 
             <a
+              v-if="lightbox.photo.origine !== 'google'"
               :href="`/api/photos/${lightbox.photo.id}/image`"
               download
               class="lb-action-btn"
               style="text-decoration:none"
             >⬇ Download original</a>
+            <span
+              v-else
+              style="font-size:12px;color:var(--muted);padding:7px 12px"
+            >Original on Google Photos</span>
           </div>
         </div>
       </div>
