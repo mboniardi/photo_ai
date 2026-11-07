@@ -10,7 +10,8 @@ from database.photos import (
     get_photos, get_photo_by_id, update_photo, count_photos, purge_trash,
     bulk_set_location, get_photo_ids_for_selection,
 )
-from services.image_processor import generate_thumbnail
+from services import derivati
+from services.image_processor import generate_thumbnail, generate_proxy
 import config
 
 router = APIRouter(prefix="/api/photos", tags=["photos"])
@@ -176,20 +177,50 @@ def purge_trash_endpoint():
     return {"ok": True, "deleted": deleted}
 
 
-@router.get("/{photo_id}/thumbnail")
-def get_thumbnail(photo_id: int, size: int = 400):
+def _servi_derivato(photo_id: int, tipo: str, size: int) -> Response:
+    """
+    Serve un derivato ("thumb" o "proxy") in quest'ordine:
+      1. dallo store, se c'e' (lettura economica, fuori dal semaforo);
+      2. altrimenti lo genera dal file originale, se esiste, dentro
+         _thumbnail_slots, e se `size` e' la dimensione standard lo scrive
+         nello store;
+      3. altrimenti 404.
+    Lo store tiene un solo derivato per tipo, alla dimensione standard: una
+    `size` diversa non viene mai memorizzata (non deve prendere il posto di
+    quello standard), ma se lo store ha gia' il derivato si serve quello.
+    """
     photo = get_photo_by_id(config.LOCAL_DB, photo_id)
     if photo is None:
         raise HTTPException(status_code=404, detail="Foto non trovata")
-    if not os.path.exists(photo["file_path"]):
-        raise HTTPException(status_code=404, detail="File non trovato sul disco")
-    with _thumbnail_slots:
-        jpeg_bytes = generate_thumbnail(photo["file_path"], size=size)
+
+    dati = derivati.leggi(photo_id, tipo)
+    if dati is None:
+        if not os.path.exists(photo["file_path"]):
+            raise HTTPException(status_code=404, detail="File non trovato sul disco")
+        standard = config.THUMBNAIL_SIZE if tipo == "thumb" else config.PROXY_SIZE
+        with _thumbnail_slots:
+            if tipo == "thumb":
+                dati = generate_thumbnail(photo["file_path"], size=size)
+            else:
+                dati = generate_proxy(photo["file_path"], size=size)
+        if size == standard:
+            derivati.scrivi(photo_id, tipo, dati)
+
     return Response(
-        content=jpeg_bytes,
+        content=dati,
         media_type="image/jpeg",
         headers={"Cache-Control": "max-age=86400"},
     )
+
+
+@router.get("/{photo_id}/thumbnail")
+def get_thumbnail(photo_id: int, size: int = config.THUMBNAIL_SIZE):
+    return _servi_derivato(photo_id, "thumb", size)
+
+
+@router.get("/{photo_id}/proxy")
+def get_proxy(photo_id: int):
+    return _servi_derivato(photo_id, "proxy", config.PROXY_SIZE)
 
 
 @router.get("/{photo_id}/image")
