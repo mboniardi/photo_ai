@@ -171,3 +171,38 @@ def test_scompatta_rifiuta_di_scrivere_attraverso_un_symlink(tmp_path):
     with pytest.raises(ValueError):
         scompatta([zip_malevolo], str(dest))
     assert not (fuori / "evaso.txt").exists()
+
+
+def test_scompatta_apre_ogni_zip_una_volta_per_fase_non_una_per_voce(tmp_path, monkeypatch):
+    z = _zip(tmp_path / "a.zip", {f"A/f{i}.jpg": b"x" for i in range(30)})
+    aperture = []
+    originale = zipfile.ZipFile
+
+    def contatore(*args, **kwargs):
+        aperture.append(args)
+        return originale(*args, **kwargs)
+
+    monkeypatch.setattr("services.takeout_archivio.zipfile.ZipFile", contatore)
+    scompatta([z], str(tmp_path / "out"))
+    assert len(aperture) <= 2  # una per validare, una per estrarre
+    assert (tmp_path / "out/A/f29.jpg").exists()
+
+
+@pytest.mark.parametrize("lat, lon", [
+    (float("nan"), 9.0), (45.0, float("nan")), (float("inf"), 9.0),
+    (91.0, 9.0), (-91.0, 9.0), (45.0, 181.0), (45.0, -181.0),
+])
+def test_coordinate_non_finite_o_fuori_range_valgono_assenti(fixture_takeout, lat, lon):
+    d = os.path.join(fixture_takeout, "Google Foto", "Vacanza")
+    with open(os.path.join(d, "IMG_1.jpg.supplemental-metadata.json"), "w") as fh:
+        json.dump({"geoData": {"latitude": lat, "longitude": lon}}, fh)  # scrive NaN/Infinity
+    v = _voce(leggi(fixture_takeout), "IMG_1.jpg")
+    assert v.latitudine is None and v.longitudine is None
+
+
+def test_coordinate_ai_limiti_sono_valide(fixture_takeout):
+    d = os.path.join(fixture_takeout, "Google Foto", "Vacanza")
+    with open(os.path.join(d, "IMG_1.jpg.supplemental-metadata.json"), "w") as fh:
+        json.dump({"geoData": {"latitude": 90.0, "longitude": -180.0}}, fh)
+    v = _voce(leggi(fixture_takeout), "IMG_1.jpg")
+    assert (v.latitudine, v.longitudine) == (90.0, -180.0)

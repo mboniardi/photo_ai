@@ -111,3 +111,14 @@ class TestEmbeddingAndDeepSeekConfig:
         importlib.reload(config)
         assert config.DEEPSEEK_MODEL == "deepseek-flash"
         assert config.DEEPSEEK_MAX_SIDE_PX == 1024
+
+
+class TestSuffissiModificato:
+    def test_default_contiene_inglese_e_italiano(self):
+        cfg = reload_config({})
+        assert "-edited" in cfg.TAKEOUT_SUFFISSI_MODIFICATO
+        assert "-modificato" in cfg.TAKEOUT_SUFFISSI_MODIFICATO
+
+    def test_env_ripulita_da_spazi_e_vuoti(self):
+        cfg = reload_config({"TAKEOUT_SUFFISSI_MODIFICATO": "-edited, -modificato ,,  "})
+        assert cfg.TAKEOUT_SUFFISSI_MODIFICATO == ["-edited", "-modificato"]

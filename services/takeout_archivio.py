@@ -6,6 +6,7 @@ descrive le foto contenute, accoppiando ciascuna al suo JSON di accompagnamento
 (l'unico posto in cui Google esporta le coordinate GPS).
 """
 import json
+import math
 import os
 import zipfile
 from dataclasses import dataclass, field
@@ -67,17 +68,23 @@ def scompatta(zip_paths: list, destinazione: str) -> str:
                     raise ValueError(f"Percorso fuori dalla destinazione: {nome!r}")
                 da_estrarre.append((zip_path, info, bersaglio))
 
+    # Ogni archivio si apre una sola volta, per tutte le sue voci
+    per_zip = {}
     for zip_path, info, bersaglio in da_estrarre:
-        if info.is_dir():
-            os.makedirs(bersaglio, exist_ok=True)
-            continue
-        os.makedirs(os.path.dirname(bersaglio), exist_ok=True)
-        with zipfile.ZipFile(zip_path) as zf, zf.open(info) as src, open(bersaglio, "wb") as dst:
-            while True:
-                blocco = src.read(1024 * 1024)
-                if not blocco:
-                    break
-                dst.write(blocco)
+        per_zip.setdefault(zip_path, []).append((info, bersaglio))
+    for zip_path, voci in per_zip.items():
+        with zipfile.ZipFile(zip_path) as zf:
+            for info, bersaglio in voci:
+                if info.is_dir():
+                    os.makedirs(bersaglio, exist_ok=True)
+                    continue
+                os.makedirs(os.path.dirname(bersaglio), exist_ok=True)
+                with zf.open(info) as src, open(bersaglio, "wb") as dst:
+                    while True:
+                        blocco = src.read(1024 * 1024)
+                        if not blocco:
+                            break
+                        dst.write(blocco)
     return destinazione
 
 
@@ -129,7 +136,7 @@ def _istante_iso(dati: dict) -> Optional[str]:
 
 
 def _coordinate(dati: dict):
-    """(lat, lon) da `geoData`; (None, None) se assenti, malformate o 0/0."""
+    """(lat, lon) da `geoData`; (None, None) se assenti, malformate, non valide o 0/0."""
     geo = dati.get("geoData")
     if not isinstance(geo, dict):
         return None, None
@@ -139,6 +146,10 @@ def _coordinate(dati: dict):
             return None, None
         lat, lon = float(lat), float(lon)
     except (ValueError, TypeError):
+        return None, None
+    # NaN/Infinity (json li accetta) e valori fuori range non sono coordinate
+    if not (math.isfinite(lat) and math.isfinite(lon)
+            and -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
         return None, None
     # 0/0 in Google Foto significa "non georeferenziata" (come in api/takeout.py)
     if lat == 0.0 and lon == 0.0:

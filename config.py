@@ -35,9 +35,11 @@ TAKEOUT_JSON_PATH: str = os.environ.get("TAKEOUT_JSON_PATH", f"{APP_DATA_PATH}/t
 # Takeout localizza il suffisso dei file modificati: inglese "-edited",
 # italiano "-modificato". La lista e' un sovrainsieme deliberato — un suffisso
 # di troppo non fa danno, uno mancante fa entrare la foto due volte.
-TAKEOUT_SUFFISSI_MODIFICATO: list[str] = os.environ.get(
-    "TAKEOUT_SUFFISSI_MODIFICATO", "-edited,-modificato,-bearbeitet,-modifié,-editado"
-).split(",")
+TAKEOUT_SUFFISSI_MODIFICATO: list[str] = [
+    s.strip() for s in os.environ.get(
+        "TAKEOUT_SUFFISSI_MODIFICATO", "-edited,-modificato,-bearbeitet,-modifié,-editado"
+    ).split(",") if s.strip()
+]
 
 # ── Secrets / credenziali (nessun default: devono venire dall'env) ─
 GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
