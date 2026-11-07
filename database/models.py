@@ -4,6 +4,7 @@ Tutte le CREATE TABLE usano IF NOT EXISTS: init_db() è idempotente.
 """
 from typing import Optional
 from database import get_db
+from database.migrazioni import assicura_colonne
 
 
 def init_db(db_path: Optional[str] = None) -> None:
@@ -112,4 +113,28 @@ def init_db(db_path: Optional[str] = None) -> None:
               key   TEXT PRIMARY KEY,
               value TEXT
             );
+
+            -- ── Possibili doppioni tra foto Google e foto NAS ─────────────
+            CREATE TABLE IF NOT EXISTS doppioni_sospetti (
+              id              INTEGER PRIMARY KEY AUTOINCREMENT,
+              photo_id_google INTEGER NOT NULL REFERENCES photos(id),
+              photo_id_nas    INTEGER NOT NULL REFERENCES photos(id),
+              motivo          TEXT,
+              distanza        INTEGER,
+              stato           TEXT DEFAULT 'pending',
+              creato_at       TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_doppioni_stato
+                ON doppioni_sospetti(stato);
         """)
+
+    # Migrazione: colonne nuove su database esistenti (CREATE IF NOT EXISTS
+    # non le aggiungerebbe mai). Connessione separata: get_db ha gia' fatto commit.
+    assicura_colonne(db_path, "photos", {
+        "phash": "TEXT",
+        "origine": "TEXT DEFAULT 'nas'",
+        "derivati_at": "TEXT",
+    })
+    with get_db(db_path) as conn:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_photos_phash ON photos(phash)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_photos_origine ON photos(origine)")
