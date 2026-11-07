@@ -16,8 +16,9 @@ from fastapi import HTTPException
 
 import config
 from database import get_db
-from database.photos import (delete_photo_by_path, get_photo_by_id,
-                             get_photo_id_by_path, insert_photo, update_photo)
+from database.photos import (conta_foto_senza_impronta, delete_photo_by_path,
+                             get_photo_by_id, get_photo_id_by_path,
+                             insert_photo, update_photo)
 from database.queue import add_to_queue
 from services import derivati, image_processor, impronta, takeout_archivio
 from services.exif_reader import read_exif
@@ -120,22 +121,44 @@ def _registra_sospetto(db_path: str, google_id: int, esito) -> None:
             (google_id, esito.photo_id, esito.motivo, esito.distanza))
 
 
-def importa_album(zip_paths: list, db_path: Optional[str] = None) -> dict:
+def importa_album(zip_paths: list, db_path: Optional[str] = None,
+                  forza: bool = False) -> dict:
     """
     Importa gli ZIP di un album Takeout. Ritorna il riepilogo:
     nuove, arricchite, incerte, video_saltati, gemelli_scartati,
     json_illeggibili, errori, gia_presenti (con il dettaglio per motivo:
-    gia_presenti_per_istante / gia_presenti_per_phash) e zip_da_rimuovere.
+    gia_presenti_per_istante / gia_presenti_per_phash), senza_impronta e
+    zip_da_rimuovere.
 
-    Solleva HTTPException(507) se lo spazio per i derivati non basta.
+    Solleva HTTPException(507) se lo spazio per i derivati non basta e
+    HTTPException(409) se la passata delle impronte non e' finita, a meno che
+    `forza` non sia True.
     Gli ZIP non vengono toccati; la directory di lavoro si': contiene gli
     originali estratti.
     """
     db_path = db_path or config.LOCAL_DB
+
+    # Una riga di catalogo senza impronta disarma la salvaguardia di decidi():
+    # l'abbinamento per solo istante fonde senza poter verificare che le due
+    # immagini si somiglino, e la copia dell'archivio sparisce. E' l'unica
+    # configurazione che perde una foto, quindi si controlla PRIMA di toccare
+    # qualunque cosa.
+    senza_impronta = conta_foto_senza_impronta(db_path)
+    if senza_impronta and not forza:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{senza_impronta} foto del catalogo non hanno ancora "
+                   f"l'impronta: un abbinamento per istante le fonderebbe "
+                   f"senza poterle confrontare, e la foto dell'archivio "
+                   f"andrebbe persa. Esegui POST /api/photos/impronte finche' "
+                   f"`elaborate` non torna 0, poi riprova; se restano file "
+                   f"illeggibili, forza=true importa lo stesso.")
+
     r = {"nuove": 0, "arricchite": 0, "incerte": 0, "video_saltati": 0,
          "gemelli_scartati": 0, "json_illeggibili": 0, "errori": 0,
          "gia_presenti": 0, "gia_presenti_per_istante": 0,
-         "gia_presenti_per_phash": 0, "zip_da_rimuovere": list(zip_paths)}
+         "gia_presenti_per_phash": 0, "senza_impronta": senza_impronta,
+         "zip_da_rimuovere": list(zip_paths)}
 
     # Gli originali estratti sono grandi: meglio sulla NAS che sul disco della VM.
     base = config.APP_DATA_PATH if os.path.isdir(config.APP_DATA_PATH) else None

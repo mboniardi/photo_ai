@@ -486,6 +486,51 @@ def test_lo_spazio_si_misura_sulla_cartella_dei_derivati(
     assert os.path.exists(viste[0]) and derivati_tmp.startswith(viste[0])
 
 
+# ── passata di impronte ───────────────────────────────────────────
+
+def _foto_senza_impronta(db, nome="vecchia.jpg", exif_date=None):
+    """Foto NAS mai passata dal calcolo delle impronte: phash NULL."""
+    from database.photos import insert_photo
+    return insert_photo(db, file_path=f"/mnt/nas/{nome}", folder_path="/mnt/nas",
+                        filename=nome, exif_date=exif_date)
+
+
+def test_rifiuta_l_import_se_la_passata_di_impronte_non_e_finita(
+        tmp_db, album, derivati_tmp, spia_scompatta):
+    """
+    Senza impronta la salvaguardia di decidi() non puo' scattare: un
+    abbinamento per solo istante fonde a scatola chiusa e perde la foto
+    dell'archivio. E' l'unica configurazione che perde una foto.
+    """
+    cartella, zippa = album
+    _scrivi_foto(cartella, "a.jpg", 1)
+    _foto_senza_impronta(tmp_db)
+    with pytest.raises(HTTPException) as exc:
+        importa_album([zippa()], tmp_db)
+    assert exc.value.status_code == 409
+    assert "impronte" in exc.value.detail
+    assert _righe(tmp_db, "SELECT id FROM photos WHERE origine = 'google'") == []
+    assert spia_scompatta == []      # non si scompatta nemmeno
+
+
+def test_con_forza_importa_lo_stesso_e_dice_quante_ne_mancano(
+        tmp_db, album, derivati_tmp):
+    cartella, zippa = album
+    _scrivi_foto(cartella, "a.jpg", 1)
+    _foto_senza_impronta(tmp_db)
+    r = importa_album([zippa()], tmp_db, forza=True)
+    assert r["senza_impronta"] == 1
+    assert r["nuove"] == 1
+
+
+def test_il_risultato_riporta_le_foto_senza_impronta(tmp_db, album, derivati_tmp):
+    cartella, zippa = album
+    _scrivi_foto(cartella, "a.jpg", 1)
+    _foto_nas(tmp_db, 5)
+    r = importa_album([zippa()], tmp_db)
+    assert r["senza_impronta"] == 0
+
+
 # ── rotta ─────────────────────────────────────────────────────────
 
 @pytest.fixture
@@ -543,3 +588,22 @@ def test_rotta_rifiuta_traversal_e_inesistenti(client, tmp_path):
 def test_rotta_rifiuta_lista_vuota(client):
     c, _ = client
     assert c.post("/api/takeout/importa-album", json={"zip_paths": []}).status_code == 422
+
+
+
+def test_la_rotta_rifiuta_se_mancano_le_impronte(client, tmp_path):
+    c, db = client
+    _foto_senza_impronta(db)
+    sorgente = tmp_path / "src2"
+    sorgente.mkdir()
+    _scrivi_foto(str(sorgente), "a.jpg", 1)
+    percorso_zip = _zip_di(str(sorgente), tmp_path / "nas" / "b.zip")
+    resp = c.post("/api/takeout/importa-album", json={"zip_paths": [percorso_zip]})
+    assert resp.status_code == 409, resp.text
+    assert "impronte" in resp.json()["detail"]
+
+    resp = c.post("/api/takeout/importa-album",
+                  json={"zip_paths": [percorso_zip], "forza": True})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["senza_impronta"] == 1
+    assert resp.json()["nuove"] == 1

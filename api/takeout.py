@@ -129,6 +129,9 @@ def import_takeout_coords(req: ImportRequest = ImportRequest()):
 
 class ImportaAlbumRequest(BaseModel):
     zip_paths: List[str] = Field(min_length=1)
+    # Importa anche se la passata delle impronte non e' finita: da usare solo
+    # quando le foto rimaste senza impronta sono file illeggibili.
+    forza: bool = False
 
 
 def _percorso_consentito(percorso: str) -> bool:
@@ -156,7 +159,8 @@ def importa_album(req: ImportaAlbumRequest):
             raise HTTPException(status_code=400,
                                 detail=f"Percorso non valido o non consentito: {percorso}")
     return takeout_import.importa_album(
-        [os.path.realpath(p) for p in req.zip_paths], config.LOCAL_DB)
+        [os.path.realpath(p) for p in req.zip_paths], config.LOCAL_DB,
+        forza=req.forza)
 
 
 class RisolviDoppioneRequest(BaseModel):
