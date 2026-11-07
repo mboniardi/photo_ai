@@ -311,6 +311,8 @@ def test_non_sovrascrive_posizioni_corrette_o_exif(tmp_db, album, derivati_tmp, 
     assert riga["longitude"] == pytest.approx(7.0)
     assert riga["location_source"] == sorgente
     assert r["arricchite"] == 0
+    # la copia dell'archivio e' stata abbinata, non inserita come nuova
+    assert r["gia_presenti"] == 1 and r["nuove"] == 0
 
 
 @pytest.mark.parametrize("guasto", ["add_to_queue", "_registra_sospetto"])
@@ -331,6 +333,32 @@ def test_guasto_dopo_l_insert_non_lascia_righe_orfane(
     assert _righe(tmp_db, "SELECT id FROM photos WHERE origine = 'google'") == []
     assert _righe(tmp_db, "SELECT * FROM analysis_queue") == []
     assert _righe(tmp_db, "SELECT * FROM doppioni_sospetti") == []
+
+
+def test_due_copie_di_un_incerta_hanno_ognuna_la_propria_revisione(tmp_db, tmp_path, derivati_tmp):
+    # N (NAS) e' a distanza "incerta" da A; B e' copia di A in un altro album.
+    # B non deve fondersi con A: se l'utente risolvesse A come doppione di N e
+    # la cancellasse, B sparirebbe senza essere mai stata confrontata con N.
+    from database.photos import update_photo
+    a, b = tmp_path / "A", tmp_path / "B"
+    a.mkdir(), b.mkdir()
+    _scrivi_foto(str(a), "x.jpg", 1)
+    shutil.copy(a / "x.jpg", b / "x.jpg")
+    percorso_zip = str(tmp_path / "due.zip")
+    with zipfile.ZipFile(percorso_zip, "w") as zf:
+        for album_, cart in (("Uno", a), ("Due", b)):
+            zf.write(cart / "x.jpg", f"Takeout/Google Foto/{album_}/x.jpg")
+    h_archivio = impronta.calcola(Image.open(a / "x.jpg"))
+    distanza = config.TAKEOUT_PHASH_CERTO + 1
+    assert distanza <= config.TAKEOUT_PHASH_INCERTO
+    h_nas = format(int(h_archivio, 16) ^ ((1 << distanza) - 1), "016x")
+    nas = _foto_nas(tmp_db, 99)
+    update_photo(tmp_db, nas, phash=h_nas)
+
+    r = importa_album([percorso_zip], tmp_db)
+    assert r["incerte"] == 2 and r["gia_presenti"] == 0
+    dop = _righe(tmp_db, "SELECT photo_id_nas FROM doppioni_sospetti")
+    assert [d["photo_id_nas"] for d in dop] == [nas, nas]
 
 
 # ── errori ────────────────────────────────────────────────────────

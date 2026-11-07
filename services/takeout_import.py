@@ -202,11 +202,15 @@ def _elabora(db_path: str, voce, indice, r: dict) -> None:
         raise
 
     # Le copie della stessa foto in altri album dello stesso archivio devono
-    # vedere questa riga: l'indice e' costruito una volta sola, prima del ciclo.
-    _aggiungi_all_indice(indice, photo_id, phash, meta, voce)
+    # vedere le righe nuove: l'indice e' costruito una volta sola, prima del ciclo.
+    # Le incerte NON si indicizzano: una loro copia si fonderebbe con loro, e se
+    # la revisione le risolvesse come doppioni della foto NAS e le cancellasse,
+    # la copia sparirebbe senza essere mai stata confrontata con la NAS. Cosi'
+    # la copia torna incerta e ha la sua riga di revisione.
     if esito.decisione == "incerta":
         r["incerte"] += 1
     else:
+        _aggiungi_all_indice(indice, photo_id, phash, meta, voce)
         r["nuove"] += 1
 
 
