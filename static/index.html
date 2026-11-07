@@ -1360,7 +1360,8 @@
           </div>
           <label style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:12px; cursor:pointer">
             <input type="checkbox" v-model="takeoutForce" />
-            Forza aggiornamento (sovrascrive coordinate già presenti)
+            Forza aggiornamento (sovrascrive solo le coordinate indovinate dall'AI
+            o arrivate da un Takeout precedente)
           </label>
           <!-- Progress upload -->
           <div v-if="takeoutUploading" style="margin-top:8px">
@@ -1386,6 +1387,7 @@
                :style="{ color: takeoutImportResult.updated > 0 ? 'var(--green)' : 'var(--muted)' }">
             Aggiornate: {{ takeoutImportResult.updated }} foto ·
             Già con coords: {{ takeoutImportResult.skipped_already_has }} ·
+            Protette (EXIF/manuali): {{ takeoutImportResult.skipped_protected }} ·
             Senza coords nel JSON: {{ takeoutImportResult.skipped_no_coords }} ·
             Non trovate nel DB: {{ takeoutImportResult.not_found }}
           </div>
@@ -2266,7 +2268,7 @@ createApp({
     const takeoutJsonCount = ref(0);
     const takeoutImportResult = ref(null);
     const takeoutUploadProgress = reactive({ done: 0, total: 0 });
-    const takeoutForce = ref(true);
+    const takeoutForce = ref(false);
 
     async function fetchTakeoutStatus() {
       const data = await apiGet('/api/takeout/status');

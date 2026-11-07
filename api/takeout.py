@@ -11,6 +11,7 @@ import config
 from database.photos import get_photo_id_by_path, update_photo
 from database import get_db, doppioni
 from services import takeout_import
+from services.takeout_import import coordinate_vincono
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,10 @@ class ImportRequest(BaseModel):
 def import_takeout_coords(req: ImportRequest = ImportRequest()):
     """
     Legge i JSON di Takeout salvati e aggiorna latitude/longitude nel DB.
-    Con force=True sovrascrive anche le foto che hanno già coordinate.
+    Con force=True sovrascrive anche le foto che hanno gia' coordinate, ma
+    MAI una posizione `exif`, `manual` o `corrected`: sono dati certi o
+    corretti a mano, e disfarli e' l'anti-obiettivo numero uno del progetto.
+    Force puo' solo sostituire un'ipotesi dell'AI o un Takeout precedente.
     Abbina per nome file (title nel JSON).
     """
     if not os.path.isdir(config.TAKEOUT_JSON_PATH):
@@ -69,16 +73,20 @@ def import_takeout_coords(req: ImportRequest = ImportRequest()):
     updated = 0
     skipped_no_coords = 0
     skipped_already_has = 0
+    skipped_protected = 0
     not_found = 0
     errors = 0
 
     # Costruisce indice filename → photo_id dal DB (case-insensitive)
     with get_db(config.LOCAL_DB) as conn:
         rows = conn.execute(
-            "SELECT id, filename, latitude FROM photos WHERE is_trash = 0 OR is_trash IS NULL"
+            "SELECT id, filename, latitude, location_source FROM photos "
+            "WHERE is_trash = 0 OR is_trash IS NULL"
         ).fetchall()
     # Indice lowercase per matching case-insensitive
-    db_index = {row["filename"].lower(): (row["id"], row["latitude"]) for row in rows}
+    db_index = {row["filename"].lower(): (row["id"], row["latitude"],
+                                          row["location_source"])
+                for row in rows}
 
     for fname in os.listdir(config.TAKEOUT_JSON_PATH):
         if not fname.endswith(".json"):
@@ -104,7 +112,12 @@ def import_takeout_coords(req: ImportRequest = ImportRequest()):
                 logger.debug("Takeout JSON '%s' → title '%s' non trovato nel DB", fname, title)
                 continue
 
-            photo_id, existing_lat = db_index[title_lower]
+            photo_id, existing_lat, existing_source = db_index[title_lower]
+            # Precedenza: la stessa di services.takeout_import. Nemmeno force
+            # tocca exif/manual/corrected.
+            if not coordinate_vincono(existing_source):
+                skipped_protected += 1
+                continue
             if existing_lat is not None and not req.force:
                 skipped_already_has += 1
                 continue
@@ -122,6 +135,7 @@ def import_takeout_coords(req: ImportRequest = ImportRequest()):
         "updated": updated,
         "skipped_no_coords": skipped_no_coords,
         "skipped_already_has": skipped_already_has,
+        "skipped_protected": skipped_protected,
         "not_found": not_found,
         "errors": errors,
     }
