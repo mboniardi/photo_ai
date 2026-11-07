@@ -176,3 +176,11 @@ GROUP_DESCRIZIONE_MIN_CARATTERI: int = int(
 DERIVATI_PATH: str = os.environ.get("DERIVATI_PATH", "/opt/photo_ai/data/derivati")
 PROXY_SIZE: int = int(os.environ.get("PROXY_SIZE", 2048))
 PROXY_QUALITY: int = int(os.environ.get("PROXY_QUALITY", 85))
+
+
+# ── Riconoscimento doppioni Takeout ─────────────────────────────────────
+# Valori di partenza. Misurati su foto sintetiche: stessa foto 0..2 bit fra i
+# due percorsi reali, foto diverse 20..42. Da ritarare su dati veri: due scatti
+# REALI della stessa scena stanno molto piu' vicini di due immagini a caso.
+TAKEOUT_PHASH_CERTO: int = int(os.environ.get("TAKEOUT_PHASH_CERTO", "6"))
+TAKEOUT_PHASH_INCERTO: int = int(os.environ.get("TAKEOUT_PHASH_INCERTO", "12"))
