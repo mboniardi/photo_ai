@@ -131,3 +131,36 @@ def test_foto_solo_simile_non_e_gia_presente(tmp_db):
     assert esito.decisione == "incerta"
     assert esito.decisione != "gia_presente"
     assert (esito.photo_id, esito.distanza) == (pid, d)
+
+
+def test_stesso_istante_due_fotocamere_sceglie_quella_giusta(tmp_db):
+    """Due corpi macchina nello stesso secondo: con la fotocamera nota la
+    voce va alla riga giusta, non alla prima per istante."""
+    _inserisci(tmp_db, "a.jpg", exif_date=ISTANTE, model="EOS 5D")
+    giusta = _inserisci(tmp_db, "b.jpg", exif_date=ISTANTE, model="EOS R6")
+    esito = decidi(_voce(ISTANTE), None, costruisci_indice(tmp_db),
+                   camera_make="Canon", camera_model="EOS R6")
+    assert (esito.decisione, esito.photo_id, esito.motivo) == ("gia_presente", giusta, "istante")
+
+
+def test_fotocamera_diversa_non_abbina_per_istante(tmp_db):
+    """Stesso istante ma fotocamera che non compare: non e' un doppione per
+    istante, si ricade sull'impronta."""
+    _inserisci(tmp_db, "a.jpg", exif_date=ISTANTE, model="EOS 5D")
+    _inserisci(tmp_db, "b.jpg", exif_date=ISTANTE, model="EOS R6")
+    indice = costruisci_indice(tmp_db)
+    esito = decidi(_voce(ISTANTE), None, indice,
+                   camera_make="Nikon", camera_model="D850")
+    assert esito.decisione == "nuova"
+    # E se l'impronta e' vicina, decide l'impronta.
+    pid = _inserisci(tmp_db, "c.jpg", phash="0000000000000000")
+    esito = decidi(_voce(ISTANTE), "0000000000000000", costruisci_indice(tmp_db),
+                   camera_make="Nikon", camera_model="D850")
+    assert (esito.decisione, esito.photo_id, esito.motivo) == ("gia_presente", pid, "phash")
+
+
+def test_fotocamera_parziale_ricade_sul_solo_istante(tmp_db):
+    pid = _inserisci(tmp_db, "a.jpg", exif_date=ISTANTE)
+    esito = decidi(_voce(ISTANTE), None, costruisci_indice(tmp_db),
+                   camera_make="Canon", camera_model=None)
+    assert (esito.decisione, esito.photo_id) == ("gia_presente", pid)

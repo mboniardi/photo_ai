@@ -57,14 +57,27 @@ def costruisci_indice(db_path: str) -> Indice:
     return indice
 
 
-def decidi(voce: Voce, impronta_voce: Optional[str], indice: Indice) -> Esito:
-    """Decide se `voce` e' gia' nel catalogo, e' nuova o e' incerta."""
-    # 1. Stesso istante di scatto. Il sidecar Takeout non porta marca e modello
-    # della fotocamera, quindi l'unico dato confrontabile e' l'istante. Piu'
-    # corrispondenze sono una raffica (stesso istante, stesso posto): restano
-    # certe, e l'unica azione qui e' riempire le coordinate. Si prende la prima.
+def decidi(voce: Voce, impronta_voce: Optional[str], indice: Indice,
+           camera_make: Optional[str] = None,
+           camera_model: Optional[str] = None) -> Esito:
+    """Decide se `voce` e' gia' nel catalogo, e' nuova o e' incerta.
+
+    `camera_make`/`camera_model` vengono dall'EXIF del file dell'archivio. Se
+    ci sono entrambi, l'istante si confronta sulla terna completa; se manca
+    uno dei due si ripiega sul solo istante.
+    """
+    # 1. Stesso istante di scatto. Piu' corrispondenze sono una raffica (stesso
+    # istante, stesso posto): restano certe, e l'unica azione e' riempire le
+    # coordinate. Si prende la prima. Con la fotocamera nota si usa la terna
+    # (istante, marca, modello): due corpi macchina nello stesso secondo non
+    # sono la stessa foto, e una fusione sbagliata perde la foto dell'archivio
+    # e mette le sue coordinate sulla riga di un'altra. Senza fotocamera si
+    # ripiega sul solo istante.
     if voce.scattata_il:
-        ids = indice.per_istante.get(voce.scattata_il)
+        if camera_make is not None and camera_model is not None:
+            ids = indice.per_chiave.get((voce.scattata_il, camera_make, camera_model))
+        else:
+            ids = indice.per_istante.get(voce.scattata_il)
         if ids:
             return Esito("gia_presente", ids[0], "istante")
 
