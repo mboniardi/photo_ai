@@ -188,6 +188,12 @@
     .geo-azioni { display: flex; gap: 10px; }
     .geo-btn { padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border);
                background: transparent; color: var(--fg); cursor: pointer; font-size: 13px; }
+    .dopp-coppia { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+    .dopp-lato { width: 160px; }
+    .dopp-lato img { width: 160px; height: 160px; object-fit: cover; border-radius: 4px; display: block; }
+    .dopp-nome { font-size: 12px; margin-top: 6px; word-break: break-all; }
+    .dopp-album { font-size: 11px; color: var(--muted); }
+    .geo-btn:disabled { opacity: .5; cursor: default; }
     .geo-btn.primary { border-color: var(--green); color: var(--green); }
     .geo-btn:hover { background: var(--hover); }
     .queue-current { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 8px; font-family: 'DM Mono', monospace; }
@@ -603,6 +609,15 @@
           <span class="sidebar-item-name">Check location</span>
           <span v-if="geoCasi.length" class="sidebar-badge">{{ geoCasi.length }}</span>
         </div>
+        <div
+          class="sidebar-item"
+          :class="{ active: currentView === 'doppioni' }"
+          @click="switchToDoppioni()"
+        >
+          <span>👯</span>
+          <span class="sidebar-item-name">Review duplicates</span>
+          <span v-if="doppCasi.length" class="sidebar-badge">{{ doppCasi.length }}</span>
+        </div>
       </div>
 
       <div class="sidebar-section">
@@ -884,6 +899,51 @@
                 ✓ È già giusta
               </button>
               <button class="geo-btn" style="margin-left:auto" @click="ignoraCaso(caso)">Ignora</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- REVIEW DUPLICATES VIEW -->
+      <div v-if="currentView === 'doppioni'" class="geo-view">
+        <div class="geo-intro">
+          Photos from a Google import that may already be in the catalogue. Merging two
+          different photos loses one for good, so nothing is decided automatically: look
+          at both and choose.
+        </div>
+        <div v-if="doppAvviso" class="geo-intro" style="color:var(--amber)">{{ doppAvviso }}</div>
+        <div v-if="doppLoading" class="geo-intro">Loading…</div>
+        <div v-else-if="!doppCasi.length" class="geo-intro">No suspected duplicates to review.</div>
+
+        <div v-for="caso in doppCasi" :key="caso.id" class="geo-caso">
+          <div class="geo-caso-head" style="cursor:default">
+            <span class="geo-loc">{{ motivoDoppione(caso.motivo) }}</span>
+            <span class="geo-quando">{{ distanzaDoppione(caso) }}</span>
+          </div>
+          <div class="geo-body">
+            <div class="dopp-coppia">
+              <div class="dopp-lato">
+                <img :src="`/api/photos/${caso.photo_id_google}/thumbnail?size=160`" loading="lazy">
+                <div class="dopp-nome">{{ caso.filename_google }}</div>
+                <div class="dopp-album">Google · {{ nomeAlbum(caso.album_google) }}</div>
+              </div>
+              <div class="dopp-lato">
+                <img :src="`/api/photos/${caso.photo_id_nas}/thumbnail?size=160`" loading="lazy">
+                <div class="dopp-nome">{{ caso.filename_nas }}</div>
+                <div class="dopp-album">Catalogue · {{ nomeAlbum(caso.album_nas) }}</div>
+              </div>
+            </div>
+            <div class="geo-azioni">
+              <button class="geo-btn primary" :disabled="caso.busy"
+                      @click="risolviDoppione(caso, true)"
+                      title="Keep the catalogue photo, drop the Google copy (its location is carried over unless you set one yourself)">
+                ✓ It is the same photo
+              </button>
+              <button class="geo-btn" :disabled="caso.busy"
+                      @click="risolviDoppione(caso, false)"
+                      title="Keep both; the Google photo goes to the AI analysis queue">
+                ✗ They are different
+              </button>
             </div>
           </div>
         </div>
@@ -2359,6 +2419,64 @@ createApp({
       }
     }
 
+    /* REVIEW DUPLICATES */
+    const doppCasi = ref([]);
+    const doppLoading = ref(false);
+    const doppAvviso = ref('');
+
+    const _MOTIVI_DOPPIONE = {
+      istante: 'Taken at the same moment',
+      phash: 'Look alike',
+      istante_ma_impronta_lontana: 'Taken at the same moment, but look different',
+    };
+    function motivoDoppione(motivo) { return _MOTIVI_DOPPIONE[motivo] || motivo || 'Unknown reason'; }
+    function distanzaDoppione(caso) {
+      return caso.distanza == null ? '' : `visual distance ${caso.distanza}`;
+    }
+    // "google:/Vacanza" o "/mnt/nas/2020/Mare" -> ultima cartella
+    function nomeAlbum(percorso) {
+      const parti = (percorso || '').split('/').filter(Boolean);
+      return parti.length ? parti[parti.length - 1] : '';
+    }
+
+    async function switchToDoppioni() {
+      currentView.value = 'doppioni';
+      await loadDoppioni();
+    }
+
+    async function loadDoppioni() {
+      doppLoading.value = true;
+      try {
+        const d = await apiGet('/api/takeout/doppioni');
+        if (d) doppCasi.value = d.map(c => ({ ...c, busy: false }));
+      } finally {
+        doppLoading.value = false;
+      }
+    }
+
+    async function risolviDoppione(caso, stessaFoto) {
+      caso.busy = true;
+      doppAvviso.value = '';
+      const resp = await apiFetch(`/api/takeout/doppioni/${caso.id}`, {
+        method: 'POST', body: JSON.stringify({ stessa_foto: stessaFoto }),
+      });
+      if (resp && resp.ok) {
+        doppCasi.value = doppCasi.value.filter(c => c.id !== caso.id);
+        if (stessaFoto) {
+          // Le altre coppie con la stessa foto Google non hanno piu' oggetto.
+          doppCasi.value = doppCasi.value.filter(c => c.photo_id_google !== caso.photo_id_google);
+        }
+        return;
+      }
+      caso.busy = false;
+      if (resp && resp.status === 409) {
+        doppAvviso.value = 'Already decided elsewhere; list refreshed.';
+        await loadDoppioni();
+      } else {
+        doppAvviso.value = 'Could not save the decision. Try again.';
+      }
+    }
+
     /* CHECK LOCATION */
     const geoCasi = ref([]);
     const geoStats = ref({ esaminate: 0, segnalate: 0 });
@@ -2574,6 +2692,8 @@ createApp({
       currentView, mapSelectedPhoto, switchToMap, switchToGrid, openMapPhoto,
       geoCasi, geoStats, geoLoading, geoAvviso, switchToGeoCheck, loadGeoCheck,
       toggleCaso, accettaCaso, correggiCaso, confermaCaso, ignoraCaso,
+      doppCasi, doppLoading, doppAvviso, switchToDoppioni, risolviDoppione,
+      motivoDoppione, distanzaDoppione, nomeAlbum,
       browserRoot, browserCurrentPath, browserDirs, browserLoading, browserError, browserBreadcrumbs, browseTo, selectBrowserPath,
       showSettingsModal, savingSettings, testingAi, testResult, settingsForm,
       purgingTrash, purgeResult, purgeTrash,

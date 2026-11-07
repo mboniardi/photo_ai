@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 import config
 from database.photos import get_photo_id_by_path, update_photo
-from database import get_db
+from database import get_db, doppioni
 from services import takeout_import
 
 logger = logging.getLogger(__name__)
@@ -157,3 +157,24 @@ def importa_album(req: ImportaAlbumRequest):
                                 detail=f"Percorso non valido o non consentito: {percorso}")
     return takeout_import.importa_album(
         [os.path.realpath(p) for p in req.zip_paths], config.LOCAL_DB)
+
+
+class RisolviDoppioneRequest(BaseModel):
+    stessa_foto: bool
+
+
+@router.get("/doppioni")
+def elenca_doppioni():
+    """Doppioni sospetti ancora da decidere, con le due foto affiancate."""
+    return doppioni.elenca_sospetti(config.LOCAL_DB)
+
+
+@router.post("/doppioni/{sospetto_id}")
+def risolvi_doppione(sospetto_id: int, req: RisolviDoppioneRequest):
+    """Decide un sospetto: stessa foto (unisce) o foto diverse (resta e va in coda AI)."""
+    try:
+        return doppioni.risolvi(config.LOCAL_DB, sospetto_id, req.stessa_foto)
+    except doppioni.SospettoNonTrovato as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except doppioni.SospettoGiaRisolto as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
