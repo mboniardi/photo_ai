@@ -32,6 +32,13 @@ REMOTE_DB: str = f"{APP_DATA_PATH}/photo_ai.db"
 # Cartella dove vengono caricati i JSON di Google Takeout
 TAKEOUT_JSON_PATH: str = os.environ.get("TAKEOUT_JSON_PATH", f"{APP_DATA_PATH}/takeout_json")
 
+# Takeout localizza il suffisso dei file modificati: inglese "-edited",
+# italiano "-modificato". La lista e' un sovrainsieme deliberato — un suffisso
+# di troppo non fa danno, uno mancante fa entrare la foto due volte.
+TAKEOUT_SUFFISSI_MODIFICATO: list[str] = os.environ.get(
+    "TAKEOUT_SUFFISSI_MODIFICATO", "-edited,-modificato,-bearbeitet,-modifié,-editado"
+).split(",")
+
 # ── Secrets / credenziali (nessun default: devono venire dall'env) ─
 GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")

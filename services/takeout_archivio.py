@@ -12,11 +12,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
+import config
 from services.scanner import SUPPORTED_EXTS
 
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".3gp"}
 
-_SUFFISSO_EDITED = "-edited"
 # Convenzione recente dei sidecar: "<foto>.supplemental-metadata.json".
 # Takeout tronca il suffisso quando il nome è lungo (".supplemental-metad.json").
 _SUFFISSO_SUPPLEMENTAL = "supplemental-metadata"
@@ -96,6 +96,19 @@ def _trova_sidecar(nome: str, json_nella_cartella: set) -> Optional[str]:
     return None
 
 
+def _nome_originale(nome: str) -> Optional[str]:
+    """
+    Per un file modificato ("X-edited.jpg", "X-modificato.jpg") ritorna il nome
+    dell'originale ("X.jpg"); None se non è un file modificato. I suffissi
+    stanno in config e si leggono a ogni chiamata.
+    """
+    stem, ext = os.path.splitext(nome)
+    for suffisso in config.TAKEOUT_SUFFISSI_MODIFICATO:
+        if suffisso and stem.endswith(suffisso) and len(stem) > len(suffisso):
+            return stem[:-len(suffisso)] + ext
+    return None
+
+
 def _istante_iso(dati: dict) -> Optional[str]:
     """
     `photoTakenTime.timestamp` (secondi epoch, di solito stringa) in ISO 8601
@@ -164,11 +177,9 @@ def leggi(radice: str) -> Contenuto:
         presenti = set(immagini)
         scartati = set()
         for f in immagini:
-            stem, ext = os.path.splitext(f)
-            if stem.endswith(_SUFFISSO_EDITED):
-                originale = stem[:-len(_SUFFISSO_EDITED)] + ext
-                if originale in presenti:
-                    scartati.add(originale)
+            originale = _nome_originale(f)
+            if originale in presenti:
+                scartati.add(originale)
         contenuto.gemelli_scartati += len(scartati)
 
         for f in immagini:
@@ -177,10 +188,9 @@ def leggi(radice: str) -> Contenuto:
             nome_json = _trova_sidecar(f, json_nella_cartella)
             if nome_json is None:
                 # Takeout dà il JSON alla sola foto originale, non alla -edited
-                stem, ext = os.path.splitext(f)
-                if stem.endswith(_SUFFISSO_EDITED):
-                    nome_json = _trova_sidecar(stem[:-len(_SUFFISSO_EDITED)] + ext,
-                                               json_nella_cartella)
+                originale = _nome_originale(f)
+                if originale is not None:
+                    nome_json = _trova_sidecar(originale, json_nella_cartella)
             dati = _leggi_sidecar(cartella, nome_json)
             if dati is None:
                 contenuto.json_illeggibili += 1

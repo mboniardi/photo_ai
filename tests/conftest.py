@@ -61,6 +61,7 @@ def fixture_takeout(tmp_path):
       IMG_3.jpg  + JSON troncato                          (illeggibile)
       IMG_4.jpg  senza JSON
       IMG_9.jpg, IMG_9-edited.jpg + JSON del solo originale (come fa Takeout)
+      IMG_8.jpg, IMG_8-modificato.jpg: idem con il suffisso italiano
       clip.mp4   + JSON                                   (video, da saltare)
       metadata.json                                       (file d'album, non una foto)
     Per l'archivio vero i nomi dei campi `title` e `geoData` sono verificati;
@@ -88,6 +89,12 @@ def fixture_takeout(tmp_path):
     _scrivi_jpeg(os.path.join(d, "IMG_9-edited.jpg"))
     _scrivi_sidecar(os.path.join(d, "IMG_9.jpg.supplemental-metadata.json"),
                     "IMG_9.jpg", 41.9, 12.5)
+
+    # Stessa coppia con il suffisso italiano di Takeout
+    _scrivi_jpeg(os.path.join(d, "IMG_8.jpg"))
+    _scrivi_jpeg(os.path.join(d, "IMG_8-modificato.jpg"))
+    _scrivi_sidecar(os.path.join(d, "IMG_8.jpg.supplemental-metadata.json"),
+                    "IMG_8.jpg", 43.7, 11.2)
 
     with open(os.path.join(d, "clip.mp4"), "wb") as fh:
         fh.write(b"\x00\x00\x00\x18ftypmp42")

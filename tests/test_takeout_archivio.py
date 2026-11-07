@@ -49,7 +49,21 @@ def test_i_video_sono_saltati_e_contati(fixture_takeout):
 def test_del_gemello_edited_si_tiene_la_versione_modificata(fixture_takeout):
     contenuto = leggi(fixture_takeout)
     assert [v.nome for v in contenuto.voci if v.nome.startswith("IMG_9")] == ["IMG_9-edited.jpg"]
+    assert contenuto.gemelli_scartati == 2  # IMG_9 e IMG_8
+
+
+def test_del_gemello_modificato_italiano_si_tiene_la_versione_modificata(fixture_takeout):
+    contenuto = leggi(fixture_takeout)
+    assert [v.nome for v in contenuto.voci if v.nome.startswith("IMG_8")] == ["IMG_8-modificato.jpg"]
+    assert _voce(contenuto, "IMG_8-modificato.jpg").latitudine == pytest.approx(43.7)
+
+
+def test_i_suffissi_si_leggono_da_config_a_ogni_chiamata(fixture_takeout, monkeypatch):
+    import config
+    monkeypatch.setattr(config, "TAKEOUT_SUFFISSI_MODIFICATO", ["-edited"])
+    contenuto = leggi(fixture_takeout)
     assert contenuto.gemelli_scartati == 1
+    assert "IMG_8.jpg" in [v.nome for v in contenuto.voci]
 
 
 def test_la_versione_edited_eredita_il_json_dell_originale(fixture_takeout):
@@ -76,7 +90,8 @@ def test_il_json_d_album_non_e_una_foto(fixture_takeout):
 
 def test_conta_delle_voci(fixture_takeout):
     nomi = sorted(v.nome for v in leggi(fixture_takeout).voci)
-    assert nomi == ["IMG_1.jpg", "IMG_2.jpg", "IMG_3.jpg", "IMG_4.jpg", "IMG_9-edited.jpg"]
+    assert nomi == ["IMG_1.jpg", "IMG_2.jpg", "IMG_3.jpg", "IMG_4.jpg",
+                    "IMG_8-modificato.jpg", "IMG_9-edited.jpg"]
 
 
 @pytest.mark.parametrize("photo_taken", [
