@@ -452,3 +452,22 @@ class TestDerivatiDalloStore:
         assert Contatore.entrate == 0
         assert c.get(f"/api/photos/{pid}/proxy").status_code == 200
         assert Contatore.entrate == 1
+
+    def test_scrittura_fallita_dello_store_non_fa_fallire_la_richiesta(self, client_with_photo, store, monkeypatch):
+        def piena(*a, **k):
+            raise OSError(28, "No space left on device")
+        monkeypatch.setattr(store, "scrivi", piena)
+        c, pid, _ = client_with_photo
+        for tipo in ("thumbnail", "proxy"):
+            resp = c.get(f"/api/photos/{pid}/{tipo}")
+            assert resp.status_code == 200
+            assert resp.content[:2] == b"\xff\xd8"
+
+    def test_generazione_fallita_resta_un_errore(self, client_with_photo, store, monkeypatch):
+        import api.photos as m
+        def rotta(*a, **k):
+            raise RuntimeError("decodifica fallita")
+        monkeypatch.setattr(m, "generate_thumbnail", rotta)
+        c, pid, _ = client_with_photo
+        with pytest.raises(RuntimeError):
+            c.get(f"/api/photos/{pid}/thumbnail")

@@ -1,4 +1,5 @@
 """Route /api/photos."""
+import logging
 import os
 import threading
 from fastapi import APIRouter, HTTPException
@@ -13,6 +14,8 @@ from database.photos import (
 from services import derivati
 from services.image_processor import generate_thumbnail, generate_proxy
 import config
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/photos", tags=["photos"])
 
@@ -204,7 +207,12 @@ def _servi_derivato(photo_id: int, tipo: str, size: int) -> Response:
             else:
                 dati = generate_proxy(photo["file_path"], size=size)
         if size == standard:
-            derivati.scrivi(photo_id, tipo, dati)
+            # Lo store e' solo una cache rigenerabile: se la scrittura fallisce
+            # (disco pieno, permessi) si serve comunque il derivato generato.
+            try:
+                derivati.scrivi(photo_id, tipo, dati)
+            except Exception as e:
+                logger.warning("Scrittura derivato %s della foto %s non riuscita: %s", tipo, photo_id, e)
 
     return Response(
         content=dati,
