@@ -45,6 +45,14 @@ def _scrivi_foto(cartella, nome, seed, lat=None, lon=None, camera=None, istante=
     return percorso
 
 
+def _data_exif(percorso, istante_locale):
+    """Scrive DateTimeOriginal (ora locale della fotocamera) nel JPEG."""
+    import piexif
+    exif = piexif.dump({"Exif": {
+        piexif.ExifIFD.DateTimeOriginal: istante_locale.replace("-", ":").replace("T", " ")}})
+    piexif.insert(exif, percorso)
+
+
 def _zip_di(cartella_album, zip_path):
     """ZIP con la struttura di Takeout: Takeout/Google Foto/<album>/<file>."""
     with zipfile.ZipFile(zip_path, "w") as zf:
@@ -194,6 +202,33 @@ def test_il_risultato_distingue_istante_da_phash(tmp_db, album, derivati_tmp):
     assert r["gia_presenti_per_phash"] == 1
 
 
+def test_abbina_sull_ora_locale_exif_non_sull_utc_di_google(tmp_db, album, derivati_tmp):
+    """
+    photoTakenTime e' UTC, photos.exif_date e' l'ora locale della fotocamera:
+    per un utente italiano sono sempre una o due ore diverse. L'abbinamento
+    per istante deve usare l'EXIF del file dell'archivio — lo stesso valore
+    che poi viene scritto e indicizzato — altrimenti la regola 1 non scatta
+    mai e tutto ricade sull'impronta, che e' il ripiego.
+    """
+    cartella, zippa = album
+    # 1700000000 = 2023-11-14T22:13:20Z; in Italia era gia' il 14 alle 23:13:20
+    locale = "2023-11-14T23:13:20"
+    percorso = _scrivi_foto(cartella, "a.jpg", 1, 45.5, 9.1, istante="1700000000")
+    _data_exif(percorso, locale)
+    voce = takeout_archivio.leggi(_estrai(zippa(), cartella)).voci[0]
+    assert voce.scattata_il == "2023-11-14T22:13:20"   # UTC, due ore avanti
+
+    # Stessa immagine (quindi anche l'impronta abbinerebbe): e' il motivo
+    # riportato a dire quale delle due regole ha deciso.
+    pid = _foto_nas(tmp_db, 1, exif_date=locale)
+    r = importa_album([zippa()], tmp_db)
+
+    assert r["gia_presenti_per_istante"] == 1, r
+    assert r["gia_presenti_per_phash"] == 0
+    assert r["nuove"] == 0 and r["incerte"] == 0
+    assert _riga(tmp_db, pid)["latitude"] == pytest.approx(45.5)
+
+
 def _estrai(zip_path, cartella):
     destinazione = cartella + "_x"
     return takeout_archivio.scompatta([zip_path], destinazione)
@@ -251,8 +286,9 @@ def test_la_fotocamera_dell_archivio_arriva_a_decidi(tmp_db, album, derivati_tmp
     _scrivi_foto(cartella, "a.jpg", 1, camera=("Canon", "EOS 5D"))
     viste = []
 
-    def spia(voce, impronta_voce, indice, camera_make=None, camera_model=None):
-        viste.append((camera_make, camera_model, impronta_voce))
+    def spia(voce, impronta_voce, indice, camera_make=None, camera_model=None,
+             istante=None):
+        viste.append((camera_make, camera_model, impronta_voce, istante))
         return Esito("nuova")
     monkeypatch.setattr(takeout_import, "decidi", spia)
     importa_album([zippa()], tmp_db)

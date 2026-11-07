@@ -61,13 +61,26 @@ def costruisci_indice(db_path: str) -> Indice:
 
 def decidi(voce: Voce, impronta_voce: Optional[str], indice: Indice,
            camera_make: Optional[str] = None,
-           camera_model: Optional[str] = None) -> Esito:
+           camera_model: Optional[str] = None, *,
+           istante: Optional[str] = None) -> Esito:
     """Decide se `voce` e' gia' nel catalogo, e' nuova o e' incerta.
 
     `camera_make`/`camera_model` vengono dall'EXIF del file dell'archivio. Se
     ci sono entrambi, l'istante si confronta sulla terna completa; se manca
     uno dei due si ripiega sul solo istante.
+
+    `istante` e' l'istante di scatto da confrontare, e va passato dal
+    chiamante: l'indice e' costruito su `photos.exif_date`, cioe' l'ora LOCALE
+    della fotocamera (DateTimeOriginal, senza fuso), mentre `voce.scattata_il`
+    viene da `photoTakenTime.timestamp` ed e' UTC. Confrontare l'uno con
+    l'altro sbaglia di un'ora o due per ogni foto italiana, e la regola 1 non
+    scatta mai. Chi importa passa `meta.get("exif_date") or voce.scattata_il`:
+    esattamente il valore che poi scrive sulla riga e mette nell'indice, cosi'
+    chi scrive, chi indicizza e chi cerca dicono la stessa cosa. Se `istante`
+    manca si ripiega su `voce.scattata_il`, che e' la seconda meta' della
+    stessa espressione.
     """
+    istante = istante or voce.scattata_il
     # 1. Stesso istante di scatto. Piu' corrispondenze sono una raffica (stesso
     # istante, stesso posto): restano certe, e l'unica azione e' riempire le
     # coordinate. Si prende la prima. Con la fotocamera nota si usa la terna
@@ -75,11 +88,11 @@ def decidi(voce: Voce, impronta_voce: Optional[str], indice: Indice,
     # sono la stessa foto, e una fusione sbagliata perde la foto dell'archivio
     # e mette le sue coordinate sulla riga di un'altra. Senza fotocamera si
     # ripiega sul solo istante.
-    if voce.scattata_il:
+    if istante:
         if camera_make is not None and camera_model is not None:
-            ids = indice.per_chiave.get((voce.scattata_il, camera_make, camera_model))
+            ids = indice.per_chiave.get((istante, camera_make, camera_model))
         else:
-            ids = indice.per_istante.get(voce.scattata_il)
+            ids = indice.per_istante.get(istante)
         if ids:
             pid = ids[0]
             # Salvaguardia: lo stesso istante non basta se le due immagini non

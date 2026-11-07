@@ -168,9 +168,13 @@ def _elabora(db_path: str, voce, indice, r: dict) -> None:
         phash = impronta.calcola(img)
     finally:
         img.close()
+    # Lo stesso istante che `_inserisci_google` scrive e che
+    # `_aggiungi_all_indice` indicizza: l'EXIF del file dell'archivio (ora
+    # locale della fotocamera), con l'UTC di Google solo come ripiego.
     esito = decidi(voce, phash, indice,
                    camera_make=meta.get("camera_make"),
-                   camera_model=meta.get("camera_model"))
+                   camera_model=meta.get("camera_model"),
+                   istante=meta.get("exif_date") or voce.scattata_il)
 
     if esito.decisione == "gia_presente":
         r["gia_presenti"] += 1

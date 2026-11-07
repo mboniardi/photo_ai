@@ -210,3 +210,34 @@ def test_phash_stringa_vuota_e_escluso_dall_indice(tmp_db):
     indice = costruisci_indice(tmp_db)
     assert indice.impronte == []
     assert decidi(_voce(None), "0000000000000000", indice).decisione == "nuova"
+
+
+# ── i due orologi: UTC di Google contro ora locale della fotocamera ────
+
+def test_l_istante_confrontato_e_quello_exif_non_l_utc_di_google(tmp_db):
+    """
+    `voce.scattata_il` viene da photoTakenTime.timestamp, cioe' UTC;
+    `photos.exif_date` viene da DateTimeOriginal, cioe' l'ora locale della
+    fotocamera, senza fuso. Per un utente italiano differiscono sempre di
+    un'ora o due: confrontare l'uno con l'altro non abbina mai.
+    """
+    locale = "2023-07-15T14:32:00"
+    utc = "2023-07-15T12:32:00"
+    pid = _inserisci(tmp_db, "a.jpg", exif_date=locale)
+    esito = decidi(_voce(utc), None, costruisci_indice(tmp_db), istante=locale)
+    assert (esito.decisione, esito.photo_id, esito.motivo) == ("gia_presente", pid, "istante")
+
+
+def test_l_istante_passato_vale_anche_per_la_terna_con_la_fotocamera(tmp_db):
+    locale = "2023-07-15T14:32:00"
+    pid = _inserisci(tmp_db, "a.jpg", exif_date=locale, make="Canon", model="EOS")
+    esito = decidi(_voce("2023-07-15T12:32:00"), None, costruisci_indice(tmp_db),
+                   istante=locale, camera_make="Canon", camera_model="EOS")
+    assert (esito.decisione, esito.photo_id) == ("gia_presente", pid)
+
+
+def test_senza_istante_exif_si_ripiega_sull_utc_dell_archivio(tmp_db):
+    """Stesso ripiego di chi scrive la riga: `exif_date or voce.scattata_il`."""
+    pid = _inserisci(tmp_db, "a.jpg", exif_date=ISTANTE)
+    esito = decidi(_voce(ISTANTE), None, costruisci_indice(tmp_db), istante=None)
+    assert (esito.decisione, esito.photo_id) == ("gia_presente", pid)
