@@ -164,3 +164,49 @@ def test_fotocamera_parziale_ricade_sul_solo_istante(tmp_db):
     esito = decidi(_voce(ISTANTE), None, costruisci_indice(tmp_db),
                    camera_make="Canon", camera_model=None)
     assert (esito.decisione, esito.photo_id) == ("gia_presente", pid)
+
+
+def test_istante_uguale_ma_impronta_lontana_e_incerta(tmp_db):
+    """Stesso istante e stessa fotocamera, ma le immagini non c'entrano: una
+    foto di un altro contributore nello stesso secondo. Non si butta via."""
+    pid = _inserisci(tmp_db, "a.jpg", exif_date=ISTANTE, phash="0000000000000000")
+    esito = decidi(_voce(ISTANTE), "ffffffffffffffff", costruisci_indice(tmp_db),
+                   camera_make="Canon", camera_model="EOS")
+    assert esito.decisione == "incerta"
+    assert (esito.photo_id, esito.motivo, esito.distanza) == (
+        pid, "istante_ma_impronta_lontana", 64)
+
+
+def test_istante_con_impronta_dentro_la_fascia_resta_gia_presente(tmp_db):
+    """Una raffica: fotogrammi della stessa scena, impronte entro INCERTO."""
+    pid = _inserisci(tmp_db, "a.jpg", exif_date=ISTANTE, phash="0000000000000000")
+    esito = decidi(_voce(ISTANTE), f"{(1 << 12) - 1:016x}", costruisci_indice(tmp_db))
+    assert (esito.decisione, esito.photo_id, esito.motivo) == ("gia_presente", pid, "istante")
+
+
+def test_istante_senza_impronta_su_un_lato_resta_gia_presente(tmp_db):
+    pid = _inserisci(tmp_db, "a.jpg", exif_date=ISTANTE, phash=None)
+    esito = decidi(_voce(ISTANTE), "ffffffffffffffff", costruisci_indice(tmp_db))
+    assert (esito.decisione, esito.photo_id) == ("gia_presente", pid)
+    _inserisci(tmp_db, "b.jpg", exif_date="2020-01-01T00:00:00", phash="0000000000000000")
+    esito = decidi(_voce("2020-01-01T00:00:00"), None, costruisci_indice(tmp_db))
+    assert esito.decisione == "gia_presente"
+
+
+def test_confine_certo_si_fonde_e_certo_piu_uno_e_incerta(tmp_db):
+    import config
+    c = config.TAKEOUT_PHASH_CERTO
+    pid = _inserisci(tmp_db, "a.jpg", phash="0000000000000000")
+    indice = costruisci_indice(tmp_db)
+    esito = decidi(_voce(None), f"{(1 << c) - 1:016x}", indice)
+    assert (esito.decisione, esito.photo_id, esito.motivo, esito.distanza) == (
+        "gia_presente", pid, "phash", c)
+    esito = decidi(_voce(None), f"{(1 << (c + 1)) - 1:016x}", indice)
+    assert (esito.decisione, esito.photo_id, esito.distanza) == ("incerta", pid, c + 1)
+
+
+def test_phash_stringa_vuota_e_escluso_dall_indice(tmp_db):
+    _inserisci(tmp_db, "a.jpg", phash="")
+    indice = costruisci_indice(tmp_db)
+    assert indice.impronte == []
+    assert decidi(_voce(None), "0000000000000000", indice).decisione == "nuova"

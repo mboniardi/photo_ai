@@ -122,3 +122,23 @@ class TestSuffissiModificato:
     def test_env_ripulita_da_spazi_e_vuoti(self):
         cfg = reload_config({"TAKEOUT_SUFFISSI_MODIFICATO": "-edited, -modificato ,,  "})
         assert cfg.TAKEOUT_SUFFISSI_MODIFICATO == ["-edited", "-modificato"]
+
+
+class TestSoglieTakeout:
+    def test_certo_sopra_incerto_e_rifiutato(self, monkeypatch):
+        import config
+        monkeypatch.setenv("TAKEOUT_PHASH_CERTO", "20")
+        monkeypatch.setenv("TAKEOUT_PHASH_INCERTO", "12")
+        with pytest.raises(ValueError, match="TAKEOUT_PHASH_CERTO"):
+            importlib.reload(config)
+        monkeypatch.undo()
+        importlib.reload(config)  # ripristina i valori di default
+
+    def test_certo_uguale_a_incerto_e_accettato(self, monkeypatch):
+        import config
+        monkeypatch.setenv("TAKEOUT_PHASH_CERTO", "8")
+        monkeypatch.setenv("TAKEOUT_PHASH_INCERTO", "8")
+        importlib.reload(config)
+        assert config.TAKEOUT_PHASH_CERTO == 8
+        monkeypatch.undo()
+        importlib.reload(config)

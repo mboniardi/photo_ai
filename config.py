@@ -184,3 +184,10 @@ PROXY_QUALITY: int = int(os.environ.get("PROXY_QUALITY", 85))
 # REALI della stessa scena stanno molto piu' vicini di due immagini a caso.
 TAKEOUT_PHASH_CERTO: int = int(os.environ.get("TAKEOUT_PHASH_CERTO", "6"))
 TAKEOUT_PHASH_INCERTO: int = int(os.environ.get("TAKEOUT_PHASH_INCERTO", "12"))
+
+# Una soglia "certa" sopra quella "incerta" farebbe fondere in silenzio ogni
+# candidata entro INCERTO, cioe' farebbe perdere foto: meglio fermarsi subito.
+if TAKEOUT_PHASH_CERTO > TAKEOUT_PHASH_INCERTO:
+    raise ValueError(
+        f"TAKEOUT_PHASH_CERTO ({TAKEOUT_PHASH_CERTO}) deve essere <= "
+        f"TAKEOUT_PHASH_INCERTO ({TAKEOUT_PHASH_INCERTO})")

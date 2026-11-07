@@ -30,6 +30,7 @@ class Indice:
     impronte: list = field(default_factory=list)    # [(photo_id, phash)]
     per_chiave: dict = field(default_factory=dict)  # (exif_date, make, model) -> [photo_id]
     per_istante: dict = field(default_factory=dict)  # exif_date -> [photo_id]
+    phash_di: dict = field(default_factory=dict)    # photo_id -> phash
 
 
 def costruisci_indice(db_path: str) -> Indice:
@@ -48,6 +49,7 @@ def costruisci_indice(db_path: str) -> Indice:
     for pid, phash, exif_date, make, model in righe:
         if phash:
             indice.impronte.append((pid, phash))
+            indice.phash_di[pid] = phash
         # Le righe senza istante restano fuori: le scansioni di diapositive
         # hanno exif_date NULL e, abbinate su NULL = NULL, si fonderebbero
         # tutte in una sola foto.
@@ -79,7 +81,19 @@ def decidi(voce: Voce, impronta_voce: Optional[str], indice: Indice,
         else:
             ids = indice.per_istante.get(voce.scattata_il)
         if ids:
-            return Esito("gia_presente", ids[0], "istante")
+            pid = ids[0]
+            # Salvaguardia: lo stesso istante non basta se le due immagini non
+            # si somigliano affatto (es. la foto di un altro contributore
+            # dell'album, scattata nello stesso secondo). Qui si fonderebbe e
+            # la foto andrebbe persa: meglio "incerta". Le raffiche stanno ben
+            # dentro la fascia. Se manca un'impronta non si puo' dire nulla e
+            # vale l'istante.
+            h_catalogo = indice.phash_di.get(pid)
+            if impronta_voce and h_catalogo:
+                dist = impronta.distanza(impronta_voce, h_catalogo)
+                if dist > config.TAKEOUT_PHASH_INCERTO:
+                    return Esito("incerta", pid, "istante_ma_impronta_lontana", dist)
+            return Esito("gia_presente", pid, "istante")
 
     # 2-3. Impronta percettiva. Una foto solo simile NON e' la stessa foto:
     # entro la soglia stretta si fonde, nella fascia intermedia si lascia
