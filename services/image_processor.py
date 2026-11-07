@@ -4,6 +4,7 @@ Elaborazione immagini per analisi AI e generazione thumbnail.
 Funzioni principali:
   open_any_format(path)         → PIL.Image  (JPG, PNG, HEIC, RAW)
   prepare_for_ai(path)          → bytes JPEG ottimizzati per LLM
+  prepare_for_ai_da_store(id, path) → bytes JPEG dal proxy nello store
   generate_thumbnail(path, size) → bytes JPEG thumbnail UI
   generate_proxy(path, size)     → bytes JPEG proxy 2048px (lightbox, AI)
 
@@ -16,6 +17,7 @@ from typing import Optional
 from PIL import Image, ImageOps
 
 import config
+from services import derivati
 
 # Estensioni supportate per formato (lowercase)
 _JPEG_EXTS = {".jpg", ".jpeg"}
@@ -109,6 +111,49 @@ def prepare_for_ai(
         quality -= 10
         buf = _encode_jpeg(img, quality)
 
+    return buf
+
+
+def prepare_for_ai_da_store(
+    photo_id: int,
+    file_path: str,
+    max_side_px: Optional[int] = None,
+    jpeg_quality: Optional[int] = None,
+    target_max_kb: Optional[int] = None,
+) -> bytes:
+    """
+    Come `prepare_for_ai`, ma parte dal proxy nello store dei derivati e usa
+    l'originale solo se il proxy non c'e'.
+
+    Serve alle foto che esistono solo su Google: il loro `file_path` e'
+    "google:/<album>/<nome>", che NON e' un file, e aprirlo solleva
+    FileNotFoundError. I loro pixel stanno solo nei derivati.
+
+    Il proxy e' a 2048 px e tutti i motori stanno molto sotto (1280, 1024,
+    768, 320): per loro il risultato e' identico a quello dall'originale, e in
+    piu' risparmia la decodifica di un file da 24 MP per ogni foto NAS.
+
+    Il proxy e' gia' ruotato e salvato senza EXIF (vedi `generate_proxy`),
+    quindi qui NON va riapplicato `exif_transpose`: lo ruoterebbe due volte.
+    """
+    dati = derivati.leggi(photo_id, "proxy")
+    if dati is None:
+        return prepare_for_ai(file_path, max_side_px, jpeg_quality, target_max_kb)
+
+    side = max_side_px or config.MAX_SIDE_PX
+    quality = jpeg_quality or config.JPEG_QUALITY
+    target_kb = target_max_kb or config.TARGET_MAX_KB
+
+    img = Image.open(io.BytesIO(dati))
+    if max(img.size) > side:
+        img.thumbnail((side, side), Image.LANCZOS)
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+
+    buf = _encode_jpeg(img, quality)
+    while len(buf) > target_kb * 1024 and quality > 60:
+        quality -= 10
+        buf = _encode_jpeg(img, quality)
     return buf
 
 
