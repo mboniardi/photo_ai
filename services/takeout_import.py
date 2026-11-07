@@ -189,9 +189,43 @@ def _elabora(db_path: str, voce, indice, r: dict) -> None:
     proxy = image_processor.generate_proxy(voce.percorso_file)
     photo_id = _inserisci_google(db_path, voce, meta, phash, thumb, proxy)
 
+    # Coda e doppioni_sospetti stanno nello stesso rollback dell'insert: una
+    # riga Google senza coda verrebbe poi giudicata gia_presente e non sarebbe
+    # mai analizzata; un'incerta senza voce non arriverebbe alla revisione.
+    try:
+        if esito.decisione == "incerta":
+            _registra_sospetto(db_path, photo_id, esito)
+        else:
+            add_to_queue(db_path, photo_id=photo_id)
+    except BaseException:
+        _annulla(db_path, photo_id)
+        raise
+
+    # Le copie della stessa foto in altri album dello stesso archivio devono
+    # vedere questa riga: l'indice e' costruito una volta sola, prima del ciclo.
+    _aggiungi_all_indice(indice, photo_id, phash, meta, voce)
     if esito.decisione == "incerta":
-        _registra_sospetto(db_path, photo_id, esito)
         r["incerte"] += 1
     else:
-        add_to_queue(db_path, photo_id=photo_id)
         r["nuove"] += 1
+
+
+def _annulla(db_path: str, photo_id: int) -> None:
+    """Toglie del tutto una riga Google appena inserita, con derivati e code."""
+    derivati.cancella(photo_id)
+    with get_db(db_path) as conn:
+        conn.execute("DELETE FROM doppioni_sospetti WHERE photo_id_google = ?", (photo_id,))
+        conn.execute("DELETE FROM analysis_queue WHERE photo_id = ?", (photo_id,))
+        conn.execute("DELETE FROM photos WHERE id = ?", (photo_id,))
+
+
+def _aggiungi_all_indice(indice, photo_id: int, phash: str, meta: dict, voce) -> None:
+    """Rende visibile a decidi() la foto appena inserita (stessi criteri di
+    costruisci_indice: impronta e istante di scatto)."""
+    indice.impronte.append((photo_id, phash))
+    indice.phash_di[photo_id] = phash
+    istante = meta.get("exif_date") or voce.scattata_il
+    if istante:
+        indice.per_chiave.setdefault(
+            (istante, meta.get("camera_make"), meta.get("camera_model")), []).append(photo_id)
+        indice.per_istante.setdefault(istante, []).append(photo_id)

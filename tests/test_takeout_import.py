@@ -2,6 +2,7 @@
 import importlib
 import os
 import random
+import shutil
 import sqlite3
 import types
 import zipfile
@@ -266,6 +267,70 @@ def test_nomi_duplicati_nello_stesso_album_danno_due_voci(tmp_db, album, derivat
     r = importa_album([zippa()], tmp_db)
     assert r["nuove"] == 2 and r["errori"] == 0
     assert _righe(tmp_db, "SELECT COUNT(*) AS n FROM photos")[0]["n"] == 2
+
+
+def test_la_stessa_foto_in_due_album_entra_una_volta_sola(tmp_db, tmp_path, derivati_tmp):
+    # Takeout esporta una copia della foto in ogni album a cui appartiene
+    a, b = tmp_path / "A", tmp_path / "B"
+    a.mkdir(), b.mkdir()
+    _scrivi_foto(str(a), "x.jpg", 1, 45.5, 9.1)
+    shutil.copy(a / "x.jpg", b / "x.jpg")
+    shutil.copy(a / "x.jpg.supplemental-metadata.json", b / "x.jpg.supplemental-metadata.json")
+    percorso_zip = str(tmp_path / "due.zip")
+    with zipfile.ZipFile(percorso_zip, "w") as zf:
+        for album_, cart in (("Uno", a), ("Due", b)):
+            for nome in os.listdir(cart):
+                zf.write(cart / nome, f"Takeout/Google Foto/{album_}/{nome}")
+    r = importa_album([percorso_zip], tmp_db)
+    assert r["nuove"] == 1 and r["gia_presenti"] == 1
+    assert _righe(tmp_db, "SELECT COUNT(*) AS n FROM photos")[0]["n"] == 1
+
+
+def test_la_stessa_foto_in_due_album_per_impronta_senza_istante(tmp_db, tmp_path, derivati_tmp):
+    a, b = tmp_path / "A", tmp_path / "B"
+    a.mkdir(), b.mkdir()
+    _scrivi_foto(str(a), "x.jpg", 1)
+    shutil.copy(a / "x.jpg", b / "x.jpg")
+    percorso_zip = str(tmp_path / "due.zip")
+    with zipfile.ZipFile(percorso_zip, "w") as zf:
+        for album_, cart in (("Uno", a), ("Due", b)):
+            zf.write(cart / "x.jpg", f"Takeout/Google Foto/{album_}/x.jpg")
+    r = importa_album([percorso_zip], tmp_db)
+    assert r["nuove"] == 1 and r["gia_presenti_per_phash"] == 1
+    assert _righe(tmp_db, "SELECT COUNT(*) AS n FROM photos")[0]["n"] == 1
+
+
+@pytest.mark.parametrize("sorgente", ["corrected", "exif"])
+def test_non_sovrascrive_posizioni_corrette_o_exif(tmp_db, album, derivati_tmp, sorgente):
+    cartella, zippa = album
+    _scrivi_foto(cartella, "a.jpg", 1, 45.5, 9.1)
+    pid = _foto_nas(tmp_db, 1, latitude=45.0, longitude=7.0, location_source=sorgente)
+    r = importa_album([zippa()], tmp_db)
+    riga = _riga(tmp_db, pid)
+    assert riga["latitude"] == pytest.approx(45.0)
+    assert riga["longitude"] == pytest.approx(7.0)
+    assert riga["location_source"] == sorgente
+    assert r["arricchite"] == 0
+
+
+@pytest.mark.parametrize("guasto", ["add_to_queue", "_registra_sospetto"])
+def test_guasto_dopo_l_insert_non_lascia_righe_orfane(
+        tmp_db, album, derivati_tmp, monkeypatch, guasto):
+    cartella, zippa = album
+    _scrivi_foto(cartella, "a.jpg", 1)
+    if guasto == "_registra_sospetto":
+        nas = _foto_nas(tmp_db, 99)
+        monkeypatch.setattr(takeout_import, "decidi",
+                            lambda *a, **k: Esito("incerta", nas, None, 9))
+
+    def rotta(*a, **k):
+        raise sqlite3.OperationalError("database locked")
+    monkeypatch.setattr(takeout_import, guasto, rotta)
+    r = importa_album([zippa()], tmp_db)
+    assert r["errori"] == 1 and r["nuove"] == 0 and r["incerte"] == 0
+    assert _righe(tmp_db, "SELECT id FROM photos WHERE origine = 'google'") == []
+    assert _righe(tmp_db, "SELECT * FROM analysis_queue") == []
+    assert _righe(tmp_db, "SELECT * FROM doppioni_sospetti") == []
 
 
 # ── errori ────────────────────────────────────────────────────────
