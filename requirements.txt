@@ -1,38 +1,51 @@
+# Versioni fissate di proposito.
+#
+# Prima erano tutte `>=` senza tetto: ogni ricostruzione dell'immagine tirava
+# giu' qualunque cosa fosse l'ultima versione quel giorno, quindi due build
+# dello stesso commit potevano essere due applicazioni diverse e nessuno se ne
+# sarebbe accorto. Queste versioni sono state verificate il 2026-11-21 con la
+# suite completa eseguita DENTRO l'immagine: 725 passati, 2 saltati, 3 rossi
+# preesistenti.
+#
+# Per aggiornare: rilanciare la build senza i pin, eseguire la suite dentro
+# l'immagine, e rifissare qui quello che e' passato. L'aggiornamento deve
+# essere un commit visibile, non un effetto collaterale.
+
 # Web framework
-fastapi>=0.111.0
-uvicorn[standard]>=0.29.0
+fastapi==0.165.0
+uvicorn[standard]==0.54.0
 
 # Image processing
-Pillow>=10.3.0
-pillow-heif>=0.16.0
-rawpy>=0.19.0
+Pillow==13.0.0
+pillow-heif==1.8.1
+rawpy==0.28.0
 
 # EXIF
-piexif>=1.1.3
+piexif==1.1.3
 
 # Numerics (embedding similarity)
-numpy>=1.26.0
+numpy==2.4.6
 
 # Async HTTP (Nominatim reverse geocoding)
-httpx>=0.27.0
+httpx==0.28.1
 
 # Task scheduling (backup periodico DB, re-scan)
-apscheduler>=3.10.4
+apscheduler==3.11.3
 
 # Multipart form data e file upload
-python-multipart>=0.0.9
+python-multipart==0.0.34
 
 # File I/O asincrono
-aiofiles>=23.2.1
+aiofiles==25.1.0
 
 # AI engines
-google-genai>=1.0.0
-groq>=0.9.0
+google-genai==3.6.1
+groq==1.7.0
 
 # Auth (Fase 4)
-authlib>=1.3.0
-itsdangerous>=2.2.0
+authlib==1.9.10
+itsdangerous==2.2.0
 
 # Testing
-pytest>=8.2.0
-pytest-asyncio>=0.23.0
+pytest==9.2.0
+pytest-asyncio==1.5.0
