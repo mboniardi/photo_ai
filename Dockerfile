@@ -3,12 +3,24 @@ FROM python:3.11-slim
 # System deps:
 #   libheif-dev  → pillow-heif (HEIC/HEIF support)
 #   libraw-dev   → rawpy (RAW camera files)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# `apt-get upgrade` non e' ridondante con una build --pull: l'immagine base
+# viene ripubblicata a intervalli, e Debian nel frattempo pubblica patch. Al
+# 2026-11-21 python:3.11-slim portava openssl 3.5.7 mentre trixie era gia' a
+# 3.5.9. Senza questa riga quelle patch non entrano mai.
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends \
         libheif-dev \
         libraw-dev \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/photo_ai
+
+# pip e setuptools dell'immagine base sono vecchi: python:3.11-slim porta
+# pip 24.0 e setuptools 79.0.1, che insieme hanno 15 advisory note
+# (pip-audit, 2026-11-21). Vanno aggiornati PRIMA di installare qualunque
+# cosa, perche' sono loro a fare l'installazione.
+RUN pip install --no-cache-dir --upgrade pip setuptools
 
 # Install Python deps as a separate layer (cache-friendly)
 COPY requirements.txt .
